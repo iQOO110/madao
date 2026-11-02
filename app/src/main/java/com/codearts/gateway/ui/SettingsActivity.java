@@ -28,6 +28,8 @@ public class SettingsActivity extends AppCompatActivity {
     private MaterialSwitch cbFloat;
     private MaterialSwitch cbWakelock;
     private MaterialSwitch cbNotify;
+    private MaterialSwitch cbTrimSystem;
+    private MaterialSwitch cbStreamThinking;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -44,6 +46,8 @@ public class SettingsActivity extends AppCompatActivity {
         cbFloat = findViewById(R.id.cb_float);
         cbWakelock = findViewById(R.id.cb_wakelock);
         cbNotify = findViewById(R.id.cb_notify);
+        cbTrimSystem = findViewById(R.id.cb_trim_system);
+        cbStreamThinking = findViewById(R.id.cb_stream_thinking);
 
         etPort.setText(String.valueOf(store.getPort()));
         cbLan.setChecked(store.isLanEnabled());
@@ -51,6 +55,8 @@ public class SettingsActivity extends AppCompatActivity {
         cbFloat.setChecked(store.isFloatBall());
         cbWakelock.setChecked(store.isWakeLock());
         cbNotify.setChecked(store.isNotifyGuard());
+        cbTrimSystem.setChecked(store.isTrimSystem());
+        cbStreamThinking.setChecked(store.isStreamThinking());
         findViewById(R.id.btn_notify_settings).setOnClickListener(v -> {
             try {
                 Intent i = new Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS);
@@ -210,6 +216,10 @@ public class SettingsActivity extends AppCompatActivity {
         store.setAutostart(cbAutostart.isChecked());
         store.setWakeLock(cbWakelock.isChecked());
         store.setNotifyGuard(cbNotify.isChecked());
+        store.setTrimSystem(cbTrimSystem.isChecked());
+        store.setStreamThinking(cbStreamThinking.isChecked());
+        com.codearts.gateway.core.GatewayServer.sTrimSystem = store.isTrimSystem();
+        com.codearts.gateway.core.GatewayServer.sStreamThinking = store.isStreamThinking();
         // 常驻通知：渠道 importance 不可变，切开关必须重启网关服务才能重建渠道生效
         boolean notifyChanged = cbNotify.isChecked() != notifyGuardBefore;
 

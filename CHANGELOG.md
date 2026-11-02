@@ -13,7 +13,38 @@
 | 移植启动 | 1.7.0 | 更名 CodeArts 网关，对接华为 CodeArts 码道 |
 | 功能成熟 | 1.8.0–1.9.9 | function calling / MCP / 工具路径 / 心跳 |
 
-## [1.9.9] — versionCode 39（当前版本）
+## [1.9.10] — 传参优化 + 思考过程透出（用户定制版）
+
+基于 1.9.9 的本地修改（ARM64 Ubuntu 构建支持 + 两个功能修复）：
+
+### 传参优化（system prompt 不再整段塞进码道）
+- **问题**：DSH 等客户端的 system prompt 有 10KB+（工具清单、硬约束、运行时上下文快照），
+  码道是多轮续聊会话，之前整段拍进对话框后每轮残留在上游上下文里，浪费 token 并稀释指令。
+- **修复**：`openaiToQueryText()` 默认把 system 消息压缩成「前 4 行 + 省略说明」
+  （`summarizeSystem`）；user / assistant / tool 历史原样保留。
+- **开关**：设置页新增「精简系统提示词转发」（`Store.isTrimSystem`，默认开），
+  关闭后恢复 1.9.9 行为（原样转发）。
+
+### 思考过程透出（reasoning_content）
+- **问题**：码道 SSE 的 "thought" 事件原本只在流式路径部分透出；非流式路径
+  `onThinking` 为空；内部工具循环路径（`handleInternalToolPath`）思考只累计不下发。
+- **修复**：
+  - `handleChatSync`：累积 `thinking`，响应 message 里加 `reasoning_content` 字段
+    （`ToolShim.completion` 新增 5 参重载，不需要的客户端直接忽略）。
+  - `handleInternalToolPath`：跨轮累计 `thinkingAll`，流式在 content 前先补发
+    `reasoning_content` 分片，非流式走 `toolCompletion` 新参。
+  - 设置页新增「透传码道思考过程」（`Store.isStreamThinking`，默认开），
+    关闭后所有路径不再下发 thinking。
+
+### 构建（ARM64 Ubuntu / DSH 手机容器）
+- 新增 `ARM64_BUILD.md` + `build-arm64-ubuntu.sh`：Google 官方 aapt2 只有 x86_64
+  原生二进制，ARM64 上通过 qemu-user + x86_64 的 libc6/libgcc-s1 运行；
+  脚本自动把 build-tools 里的 aapt2 替换为 QEMU wrapper（原始二进制备份为 aapt2.orig）。
+- `gradle.properties` 保持与官方发布一致（aapt2FromMavenOverride 不可用：
+  Maven 的 aapt2 JAR 内嵌的同样是 x86_64 原生二进制）。
+- `app/build`、`.gradle`、`local.properties` 已加 `.gitignore`，不入仓库。
+
+## [1.9.9] — versionCode 39
 
 `BUILD_TAG = "v1.9.9+heartbeat"`
 

@@ -601,6 +601,17 @@ public final class ToolShim {
 
     /** 非流式完整报文（带 tool_calls 时 content 置空串、finish_reason=tool_calls）。 */
     public static String completion(String completionId, String model, String content, List<Call> calls) {
+        return completion(completionId, model, content, calls, null);
+    }
+
+    /**
+     * 非流式完整报文，可携带思考过程（reasoning_content）。
+     *
+     * <p>v1.9.10：码道 SSE 的 "thought" 事件原本只在流式路径透出；同步路径也
+     * 在 message 里带上该字段，与 DeepSeek/OpenAI 生态的约定一致（不需要的客户端直接忽略）。
+     */
+    public static String completion(String completionId, String model, String content,
+                                    List<Call> calls, String reasoning) {
         JSONObject o = new JSONObject();
         try {
             o.put("id", completionId);
@@ -611,6 +622,9 @@ public final class ToolShim {
             msg.put("role", "assistant");
             boolean hasCalls = calls != null && !calls.isEmpty();
             msg.put("content", content == null ? "" : content);
+            if (reasoning != null && !reasoning.isEmpty()) {
+                msg.put("reasoning_content", reasoning);
+            }
             if (hasCalls) {
                 JSONArray arr = new JSONArray();
                 for (Call c : calls) {

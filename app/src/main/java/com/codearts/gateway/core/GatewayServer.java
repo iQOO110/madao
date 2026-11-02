@@ -50,7 +50,7 @@ public final class GatewayServer {
     private final List<McpHub.Server> mcpServers = new ArrayList<>();
     private String mcpCfgSig = "\u0000";
     /** 构建标记：写进诊断文件，便于确认机上装的是哪一版。 */
-    public static final String BUILD_TAG = "v1.9.9+heartbeat";
+    public static final String BUILD_TAG = "v1.9.10+param-trim+reasoning";
 
     private AsyncHttpServer server;
     private volatile boolean running;
@@ -60,6 +60,8 @@ public final class GatewayServer {
     public GatewayServer(Context ctx) {
         this.appCtx = ctx.getApplicationContext();
         this.store = Store.get(ctx);
+        sTrimSystem = store.isTrimSystem();
+        sStreamThinking = store.isStreamThinking();
     }
 
     /** 采集请求里声明的工具名（用于把模型吐出的错名对齐回真实工具名）。 */
@@ -674,6 +676,12 @@ public final class GatewayServer {
     /** 非流式完整报文（工具路径用）。 */
     private static String toolCompletion(String cid, String model, String content,
                                          List<ToolUpstream.Call> calls) {
+        return toolCompletion(cid, model, content, calls, null);
+    }
+
+    /** 非流式完整报文（工具路径用），可携带思考过程（v1.9.10）。 */
+    private static String toolCompletion(String cid, String model, String content,
+                                         List<ToolUpstream.Call> calls, String reasoning) {
         JSONObject o = new JSONObject();
         try {
             o.put("id", cid);
@@ -683,6 +691,9 @@ public final class GatewayServer {
             JSONObject msg = new JSONObject();
             msg.put("role", "assistant");
             msg.put("content", content == null ? "" : content);
+            if (reasoning != null && !reasoning.isEmpty()) {
+                msg.put("reasoning_content", reasoning);
+            }
             if (calls != null && !calls.isEmpty()) {
                 JSONArray arr = new JSONArray();
                 for (ToolUpstream.Call c : calls) {
@@ -715,12 +726,21 @@ public final class GatewayServer {
         return o.toString();
     }
 
-    /** OpenAI messages → 拍平文本（保留系统/助手标注，并把工具调用与工具结果渲染进历史）。 */
+    /**
+     * OpenAI messages → 拍平文本（保留系统/助手标注，并把工具调用与工具结果渲染进历史）。
+     *
+     * <p>v1.9.10 传参优化：码道是<b>多轮续聊</b>会话，之前轮次塞进去的文本还会残留在
+     * 上游上下文里。而 DSH 等客户端的 system prompt 动辄 10KB+（工具清单、硬约束、
+     * 运行时上下文快照每轮全量携带），整段拍进码道对话框只会浪费 token 并稀释指令。
+     * 因此 system 消息压缩成一行摘要，只保留"前 N 行 + 长度提示"；user/assistant/tool
+     * 历史原样保留。
+     */
     static String openaiToQueryText(JSONObject openai) {
         JSONArray messages = openai == null ? null : openai.optJSONArray("messages");
         if (messages == null) {
             return "";
         }
+        boolean trimSystem = sTrimSystem;
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < messages.length(); i++) {
             JSONObject m = messages.optJSONObject(i);
@@ -737,6 +757,9 @@ public final class GatewayServer {
                     ? ToolShim.renderAssistantToolCalls(m.optJSONArray("tool_calls")) : "";
             if (text.isEmpty() && calls.isEmpty()) {
                 continue;
+            }
+            if ("system".equals(role) && trimSystem) {
+                text = summarizeSystem(text);
             }
             if (sb.length() > 0) {
                 sb.append("\n\n");
@@ -757,6 +780,37 @@ public final class GatewayServer {
                 sb.append(text);
             }
         }
+        return sb.toString();
+    }
+
+    /** 网关全局的 system 压缩开关（默认开；构造时从 Store 同步，单元测试可单独置位）。 */
+    public static volatile boolean sTrimSystem = true;
+
+    /** 网关全局的思考过程透传开关（默认开；构造时从 Store 同步）。 */
+    public static volatile boolean sStreamThinking = true;
+
+    /**
+     * 压缩 system 文本：保留前 4 行（一般含身份与最重要的指令），其余替换成
+     * 一行截断说明。空文本原样返回。
+     */
+    static String summarizeSystem(String text) {
+        if (text == null || text.isEmpty()) {
+            return "";
+        }
+        String[] lines = text.split("\n");
+        int keep = Math.min(lines.length, 4);
+        if (keep == lines.length) {
+            return text;
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < keep; i++) {
+            if (i > 0) {
+                sb.append('\n');
+            }
+            sb.append(lines[i]);
+        }
+        sb.append("\n（系统提示共 ").append(lines.length).append(" 行，其余 ").append(lines.length - keep)
+                .append(" 行为运行时环境说明，已省略；如需引用请向用户询问）");
         return sb.toString();
     }
 
@@ -1003,6 +1057,7 @@ public final class GatewayServer {
         List<ToolShim.Call> clientCalls = new ArrayList<>();
         List<JSONObject> mcpTrace = new ArrayList<>();
         StringBuilder answerAll = new StringBuilder();
+        final StringBuilder thinkingAll = new StringBuilder();
         String error = null;
         int rounds = 0;
         try {
@@ -1026,7 +1081,9 @@ public final class GatewayServer {
 
                     @Override
                     public void onThinking(String text) {
+                        // v1.9.10：内部路径也累积思考内容，循环结束后随响应透出
                         thinking.append(text);
+                        thinkingAll.append(text);
                     }
 
                     @Override
@@ -1194,8 +1251,9 @@ public final class GatewayServer {
             return;
         }
         final String cid = ProtocolAdapter.newCompletionId();
+        String reasoningOut = thinkingAll.length() > 0 ? thinkingAll.toString() : null;
         if (!stream) {
-            json(res, 200, toolCompletion(cid, model, contentOut, toUpCalls(clientCalls)));
+            json(res, 200, toolCompletion(cid, model, contentOut, toUpCalls(clientCalls), reasoningOut));
             return;
         }
         if (sseClient == null) {
@@ -1203,6 +1261,10 @@ public final class GatewayServer {
             return;
         }
         // role 帧已在循环前发出（sseClient），此处补 content / tool_calls / 收尾
+        // v1.9.10：先下发思考过程（reasoning_content），再下发最终答复
+        if (reasoningOut != null) {
+            sseClient.data(ProtocolAdapter.chunk(cid, model, reasoningDeltaJson(reasoningOut), null));
+        }
         if (!contentOut.isEmpty()) {
             sseClient.data(ProtocolAdapter.chunk(cid, model, deltaJson(contentOut), null));
         }
@@ -1266,6 +1328,7 @@ public final class GatewayServer {
                                 String model, String sessionKey, long n, boolean toolsDeclared,
                                 java.util.List<String> declaredNames) {
         final StringBuilder answer = new StringBuilder();
+        final StringBuilder thinking = new StringBuilder();
         final JSONObject trace = new JSONObject();
         final long t0 = System.currentTimeMillis();
         try {
@@ -1287,7 +1350,9 @@ public final class GatewayServer {
 
                 @Override
                 public void onThinking(String text) {
-                    // 非流式路径不单独回传思考内容
+                    // v1.9.10：非流式路径也把思考过程累积下来，随响应里的
+                    // reasoning_content 字段透出（客户端若不关心该字段会被直接忽略）
+                    thinking.append(text);
                 }
 
                 @Override
@@ -1299,6 +1364,7 @@ public final class GatewayServer {
                 public void onDone(boolean ok, String error) {
                     try {
                         trace.put("upstreamText", DevCloudClient.trim(answer.toString(), 4000));
+                        trace.put("thinkingLen", thinking.length());
                         trace.put("elapsedMs", System.currentTimeMillis() - t0);
                         trace.put("ok", ok);
                         if (error != null) {
@@ -1326,8 +1392,9 @@ public final class GatewayServer {
                     }
                     recordTrace(trace);
                     LogRing.log("req#" + n, "工具垫片(sync)：文本 " + p.content.length()
-                            + " 字，调用 " + p.calls.size() + " 个");
-                    json(res, 200, ToolShim.completion(id, model, p.content, p.calls));
+                            + " 字，调用 " + p.calls.size() + " 个，思考 " + thinking.length() + " 字");
+                    json(res, 200, ToolShim.completion(id, model, p.content, p.calls,
+                            thinking.length() > 0 ? thinking.toString() : null));
                     LogRing.log("req#" + n, "DevCloud 完成(sync)，输出 " + answer.length() + " 字");
                 }
             });
@@ -1428,7 +1495,10 @@ public final class GatewayServer {
                     String out = thinkingShim.feed(text);
                     if (out != null && !out.isEmpty()) {
                         thinking.append(out);
-                        sse.data(ProtocolAdapter.chunk(id, model, reasoningDeltaJson(out), null));
+                        if (sStreamThinking) {
+                            // v1.9.10：受 Store.isStreamThinking 控制（默认开）
+                            sse.data(ProtocolAdapter.chunk(id, model, reasoningDeltaJson(out), null));
+                        }
                     }
                     sendToolCalls();
                 }
@@ -1455,7 +1525,9 @@ public final class GatewayServer {
                         String tTail = thinkingShim.flush();
                         if (tTail != null && !tTail.isEmpty()) {
                             thinking.append(tTail);
-                            sse.data(ProtocolAdapter.chunk(id, model, reasoningDeltaJson(tTail), null));
+                            if (sStreamThinking) {
+                                sse.data(ProtocolAdapter.chunk(id, model, reasoningDeltaJson(tTail), null));
+                            }
                         }
                     }
                     sendToolCalls();

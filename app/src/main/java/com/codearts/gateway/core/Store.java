@@ -18,6 +18,8 @@ public final class Store {
     private static final String K_AUTOSTART = "autostart";
     private static final String K_APIKEYS = "api_keys";
     private static final String K_MODELS_CACHE = "models_cache";
+    private static final String K_TRIM_SYSTEM = "trim_system";
+    private static final String K_STREAM_THINKING = "stream_thinking";
 
     private static volatile Store sInstance;
 
@@ -462,6 +464,24 @@ public final class Store {
 
     public void setNotifyGuard(boolean b) {
         sp.edit().putBoolean(K_NOTIFY, b).apply();
+    }
+
+    /** 是否把 system 消息压缩成一行摘要（v1.9.10）：避免每轮把整段 system prompt 塞进码道。 */
+    public boolean isTrimSystem() {
+        return sp.getBoolean(K_TRIM_SYSTEM, true);
+    }
+
+    public void setTrimSystem(boolean b) {
+        sp.edit().putBoolean(K_TRIM_SYSTEM, b).apply();
+    }
+
+    /** 是否把思考过程（reasoning_content）透出给客户端（v1.9.10，默认开）。 */
+    public boolean isStreamThinking() {
+        return sp.getBoolean(K_STREAM_THINKING, true);
+    }
+
+    public void setStreamThinking(boolean b) {
+        sp.edit().putBoolean(K_STREAM_THINKING, b).apply();
     }
     /** 用户长按隐藏标记：主页不再自动拉起悬浮球，直到重新保存开关。 */
     public boolean isFloatBallHidden() {

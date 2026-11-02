@@ -96,6 +96,28 @@
                         android:layout_marginTop="4dp"
                         android:text="@string/settings_notify" />
 
+                    <com.google.android.material.materialswitch.MaterialSwitch
+                        android:id="@+id/cb_trim_system"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="@string/settings_trim_system" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:textSize="12sp"
+                        android:textColor="?android:attr/textColorSecondary"
+                        android:text="@string/settings_trim_system_help" />
+
+                    <com.google.android.material.materialswitch.MaterialSwitch
+                        android:id="@+id/cb_stream_thinking"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="@string/settings_stream_thinking" />
+
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
