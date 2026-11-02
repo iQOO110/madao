@@ -15,7 +15,9 @@ public final class AppConfig {
 
     // 身份信息（v1.9.4 修正：此前是 InkStone 移植遗留，导致 /health 自报成另一个项目）
     public static final String APP_NAME = "CodeArts 网关";
-    public static final String VERSION = "1.9.4";
+    // v1.9.10：与 build.gradle 的 versionName 保持一致；此前写死 1.9.4 导致
+    // 装新包后 /health 仍报旧号，用户无法确认装的是哪一版
+    public static final String VERSION = "1.9.10";
     public static final String DEFAULT_ORIGIN = "https://discovery.intern-ai.org.cn";
 
     /**

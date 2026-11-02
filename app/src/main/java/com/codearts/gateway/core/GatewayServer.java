@@ -1050,8 +1050,11 @@ public final class GatewayServer {
         // 流式时先发响应头 + role 帧：之后循环期间每次心跳都写注释行，
         // 第三方 App 从第一秒起就看到"活着的 SSE"，不会误判连接超时（v1.9.9）
         final SseWriter sseClient = stream ? new SseWriter(res.getSocket()) : null;
+        // 整个内部工具循环共用一个下游 completion id：客户端（DSH）按同一 id 把
+        // 所有 delta 帧拼成一次响应；中途换 id 会把思考流切断、块被拆开渲染（v1.9.10）
+        final String cid = ProtocolAdapter.newCompletionId();
         if (sseClient != null) {
-            sseClient.data(ProtocolAdapter.chunk(ProtocolAdapter.newCompletionId(), model,
+            sseClient.data(ProtocolAdapter.chunk(cid, model,
                     "{\"role\":\"assistant\",\"content\":\"\"}", null));
         }
         final java.util.Set<String> clientSet = new java.util.HashSet<>(clientNames);
@@ -1132,6 +1135,8 @@ public final class GatewayServer {
                 final String sidF = sid;
                 final StringBuilder thinking = new StringBuilder();
                 final int roundNo = rounds + 1;
+                // 本轮思考是否已发过轮次头（避免连续 delta 帧重复打头）
+                final boolean[] thinkingEmitted = {false};
                 final String[] upErr = new String[1];
                 DevCloudClient.streamChat(cookie, sidF, content, model, new DevCloudClient.Sink() {
                     @Override
@@ -1141,14 +1146,20 @@ public final class GatewayServer {
 
                     @Override
                     public void onThinking(String text) {
-                        // v1.9.10 修正：每轮思考即时下发（流式）/ 带轮次标记累计（同步），
-                        // 不再把多轮思考合并成一坨
+                        // v1.9.10 修正：思考即时下发（同一下游 id 连续 delta 帧，客户端按
+                        // 正常 reasoning 流渲染）；跨轮边界发带轮次头的标记帧。
+                        // 关键：所有 reasoning delta 帧必须用同一个 id，DSH 才会拼成
+                        // 一条连续的 reasoning 流；轮次头只是流内的分隔标记
                         thinking.append(text);
                         if (sseClient != null && sStreamThinking) {
-                            // 流式：每轮思考单独成块，带轮次头
-                            String labeled = "── 第" + roundNo + "轮思考 ──\n" + text;
-                            sseClient.data(ProtocolAdapter.chunk(ProtocolAdapter.newCompletionId(), model,
-                                    reasoningDeltaJson(labeled), null));
+                            if (!thinkingEmitted[0]) {
+                                // 本轮第一个思考帧：先补一个轮次头
+                                thinkingEmitted[0] = true;
+                                sseClient.data(ProtocolAdapter.chunk(cid, model,
+                                        reasoningDeltaJson("── 第" + roundNo + "轮思考 ──\n"), null));
+                            }
+                            sseClient.data(ProtocolAdapter.chunk(cid, model,
+                                    reasoningDeltaJson(text), null));
                         }
                     }
 
@@ -1323,7 +1334,6 @@ public final class GatewayServer {
             json(res, 502, ProtocolAdapter.error("内部工具链路失败: " + error, "upstream_error", null));
             return;
         }
-        final String cid = ProtocolAdapter.newCompletionId();
         // 同步路径：用带轮次标记的累计版（thinkingForSync）；流式已即时下发，不再重发
         String reasoningOut = thinkingForSync.length() > 0 ? thinkingForSync.toString() : null;
         if (!stream) {
