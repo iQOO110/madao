@@ -349,7 +349,7 @@ public final class DevCloudClient {
                 break;
             }
             case "done": {
-                LogRing.log("devcloud", "SSE event=" + ev + " " + trim(obj.toString(), 500));
+                LogRing.log("devcloud", "SSE event=done " + trim(obj.toString(), 500));
                 sink.target.onEvent(ev, obj);
                 return true;
             }
@@ -364,9 +364,31 @@ public final class DevCloudClient {
                 sink.finish(false, msg);
                 return true;
             }
+            case "tool_call":
+            case "tool_calls":
+            case "function_call":
+            case "tool_result":
+            case "tool":
+            case "command":
+            case "cmd":
+            case "deliverable":
+            case "deliverables":
+            case "artifact":
+            case "artifacts":
+            case "file":
+            case "files":
+            case "file_change":
+            case "file_changed":
+            case "mark_deliverable":
+            case "task":
+            case "tasks":
+            case "task_result":
+                // 捕获码道可能透出的工具/产物/文件类事件（v1.9.10）
+                LogRing.log("devcloud", "SSE 捕获事件 " + ev + ": " + trim(obj.toString(), 500));
+                sink.target.onEvent(ev, obj);
+                return false;
             default:
-                // v1.9.10：未知事件（artifact / file_change / 上游新增类型）落日志，
-                // 便于发现码道透出的产物信息；不终止流
+                // 未知事件（上游新增类型）也落日志，不终止流
                 LogRing.log("devcloud", "SSE 未知事件 " + ev + ": " + trim(obj.toString(), 300));
                 sink.target.onEvent(ev, obj);
                 return false;
