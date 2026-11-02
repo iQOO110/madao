@@ -20,6 +20,7 @@ public final class Store {
     private static final String K_MODELS_CACHE = "models_cache";
     private static final String K_TRIM_SYSTEM = "trim_system";
     private static final String K_STREAM_THINKING = "stream_thinking";
+    private static final String K_DROP_TOOL_PROTOCOL = "drop_tool_protocol";
 
     private static volatile Store sInstance;
 
@@ -482,6 +483,19 @@ public final class Store {
 
     public void setStreamThinking(boolean b) {
         sp.edit().putBoolean(K_STREAM_THINKING, b).apply();
+    }
+
+    /**
+     * 是否丢弃客户端携带的 tools 与「工具调用协议」文本段（v1.9.10，默认开）：
+     * agent（如 DSH）自己执行工具，码道侧不需要知道 DSH 的工具清单，避免每轮
+     * 全量 schema 反复注入、稀释对话。关闭则把 tools 转给码道（走 ToolShim 协议）。
+     */
+    public boolean isDropToolProtocol() {
+        return sp.getBoolean(K_DROP_TOOL_PROTOCOL, true);
+    }
+
+    public void setDropToolProtocol(boolean b) {
+        sp.edit().putBoolean(K_DROP_TOOL_PROTOCOL, b).apply();
     }
     /** 用户长按隐藏标记：主页不再自动拉起悬浮球，直到重新保存开关。 */
     public boolean isFloatBallHidden() {

@@ -48,6 +48,8 @@
     <string name="settings_trim_system">隐藏 agent 注入的上下文\n关闭后把客户端完整 system/运行时快照转发给码道</string>
     <string name="settings_trim_system_help">码道是多轮会话，agent 侧（如 DSH）每轮会把 system prompt 与运行时上下文快照原样带过来，反复注入既浪费 token 又稀释用户原话。开启后直接丢弃这些消息，只把用户原话与真实对话历史发给码道；关闭则恢复完整转发。</string>
     <string name="settings_stream_thinking">透传码道思考过程（reasoning_content）\n关闭后响应里不再带思考内容</string>
+    <string name="settings_drop_tool_protocol">隐藏 agent 工具清单\n关闭后把 DSH 等携带的 tools 与协议段转给码道</string>
+    <string name="settings_drop_tool_protocol_help">agent 侧（DSH）自己执行工具，码道侧不需要知道其工具清单；默认丢弃以省 token、稀释对话。关闭则把 tools 转给码道（走 ToolShim 协议，让码道模型学着调用）。</string>
     <string name="settings_float_help">悬浮球操作：拖动移动位置；单击启动/停止网关；长按隐藏（本次不再弹出，重新开启开关可恢复）。需授予「显示在其他应用上层」权限。</string>
     <string name="settings_keepalive_help">保活机制说明：\n· 前台服务 + 常驻通知：基础保活，系统优先不杀\n· CPU 保活：防止息屏后 CPU 休眠导致流式转发中断（略增耗电）\n· 开机自启：重启后自动拉起网关\n· 悬浮球：快速启停 + 视觉确认\n\n提示：厂商 ROM（华为/小米等）还需要在系统设置里允许本应用「后台运行/自启动」，否则任何保活手段都会被系统冻结。</string>
     <string name="btn_tool_settings">工具 / MCP 设置</string>

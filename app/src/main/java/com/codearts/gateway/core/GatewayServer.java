@@ -62,6 +62,7 @@ public final class GatewayServer {
         this.store = Store.get(ctx);
         sTrimSystem = store.isTrimSystem();
         sStreamThinking = store.isStreamThinking();
+        sDropToolProtocol = store.isDropToolProtocol();
     }
 
     /** 采集请求里声明的工具名（用于把模型吐出的错名对齐回真实工具名）。 */
@@ -301,7 +302,10 @@ public final class GatewayServer {
         final String model = openai.optString("model", "");
         final boolean stream = openai.optBoolean("stream", true);
         // tools 决定"是否注入协议说明"；哨兵解析则常开（避免上游沿用旧指令时协议文本泄漏给客户端）
-        final boolean toolsDeclared = ToolShim.requestHasTools(openai);
+        final boolean rawToolsDeclared = ToolShim.requestHasTools(openai);
+        // v1.9.10：默认丢弃 agent 侧携带的 tools（协议段每轮全量 schema 反复注入码道，
+        // 既非用户原话、又稀释对话）。只有 MCP 自动执行开着，或开关关闭时才走工具路径。
+        final boolean toolsDeclared = sDropToolProtocol ? false : rawToolsDeclared;
         final java.util.List<String> declaredNames = collectToolNames(openai);
 
         // ---------------- A/B 路径：带 tools 或开了 MCP，且配置了「工具模式上游」 ----------------
@@ -826,6 +830,14 @@ public final class GatewayServer {
 
     /** 网关全局的思考过程透传开关（默认开；构造时从 Store 同步）。 */
     public static volatile boolean sStreamThinking = true;
+
+    /**
+     * 网关全局的「工具协议」丢弃开关（默认开；构造时从 Store 同步）。
+     * 开：agent 侧携带的 tools 与 ToolShim 协议段直接丢弃，只把用户原话发给码道
+     * （DSH 等 agent 自己执行工具，码道侧无需知道其工具清单）。
+     * 关：把 tools 转给码道（注入 ToolShim 协议段，让码道模型学着调用）。
+     */
+    public static volatile boolean sDropToolProtocol = true;
 
     /** 工具/MCP 配置状态（密钥只报长度，不回明文）。 */
     private JSONObject toolStateJson() {

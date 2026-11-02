@@ -31,6 +31,15 @@
 - **开关**：设置页「隐藏 agent 注入的上下文」（`Store.isTrimSystem`，默认开），
   关闭后恢复 1.9.9 行为（原样转发）。
 
+### 隐藏 agent 工具清单（tools 与协议段默认丢弃）
+- **问题**：DSH 每次请求携带 20+ 个工具的完整 OpenAI function schema（几十 KB），
+  网关为把 function calling 转成文本协议，每轮把「工具调用协议」段全量注入码道
+  query，多轮会话里反复累积。但 agent 侧自己执行工具，码道侧根本不需要这些。
+- **修复**：新增开关「隐藏 agent 工具清单」（`Store.isDropToolProtocol`，默认开）：
+  开启时客户端携带的 `tools` 不参与路径分流、也不注入 ToolShim 协议段，
+  只把用户原话发给码道；关闭则恢复把 tools 转给码道（走 ToolShim 协议）。
+  注意：MCP 自动执行不受影响，仍按独立开关工作。
+
 ### 思考过程透出（reasoning_content）
 - **问题**：码道 SSE 的 "thought" 事件原本只在流式路径部分透出；非流式路径
   `onThinking` 为空；内部工具循环路径（`handleInternalToolPath`）思考只累计不下发。
