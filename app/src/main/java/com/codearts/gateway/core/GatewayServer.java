@@ -1818,6 +1818,11 @@ public final class GatewayServer {
         if (!conv.trim().isEmpty()) {
             return conv.trim();
         }
+        // v1.9.10：网关自己调码道做元任务（如会话标题生成）会带 X-CodeArts-Meta 头，
+        // 这类请求进独立上游会话，不占用真实对话的码道会话，避免标题请求串进对话
+        if (req != null && "1".equals(req.getHeaders().get("X-CodeArts-Meta"))) {
+            return "meta:" + Integer.toHexString(openai.toString().hashCode());
+        }
         // v1.9.7 修复：没有显式会话标识时，按「模型 + 首条用户消息」派生，
         // 避免所有对话共用一个 "default" 上游会话——坏掉的会话会污染所有对话，
         // 且不同话题的历史互相串台（第三方 App 反复发"检测 MCP"就是这么滚起来的）。
