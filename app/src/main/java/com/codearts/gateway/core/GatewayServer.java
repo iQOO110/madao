@@ -803,17 +803,18 @@ public final class GatewayServer {
      * Time sampled 等环境信息），而非用户原话。
      */
     static boolean isRuntimeContextSnapshot(String text) {
-        if (text == null) {
+        if (text == null || text.isEmpty()) {
             return false;
         }
         String t = text.trim();
-        if (t.startsWith("Current runtime context")) {
+        // 快照头：完整快照消息以固定文案开头；碎片快照（被上游折叠/截断后）
+        // 通常只剩 "Time sampled while preparing turn" + "Browser time zone" 两行。
+        if (t.startsWith("Current runtime context")
+                || (t.contains("Time sampled") && t.contains("Browser time zone"))) {
             return true;
         }
-        // 有些客户端把快照拆成多条 user 消息：含 Time sampled / 浏览器时区 / 工作目录
-        // 等环境行、且不含用户实际内容的，视为快照碎片
+        // 超大环境块：>4KB 且带 DSH 环境特征（工作目录 / 浏览器时区 / DSH 策略）
         if (t.length() > 4000
-                && t.contains("Time sampled")
                 && (t.contains("Current working directory") || t.contains("Browser time zone"))) {
             return true;
         }
