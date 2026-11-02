@@ -1114,7 +1114,9 @@ public final class GatewayServer {
         List<ToolShim.Call> clientCalls = new ArrayList<>();
         List<JSONObject> mcpTrace = new ArrayList<>();
         StringBuilder answerAll = new StringBuilder();
-        final StringBuilder thinkingAll = new StringBuilder();
+        // v1.9.10 修正：MCP 多轮循环里每轮的思考即时下发（流式）或带轮次标记累计（同步），
+        // 不再把多轮思考裸拼成一坨
+        final StringBuilder thinkingForSync = new StringBuilder();
         String error = null;
         int rounds = 0;
         try {
@@ -1129,6 +1131,7 @@ public final class GatewayServer {
                 ToolShim.Stream shim = new ToolShim.Stream(clientNames);
                 final String sidF = sid;
                 final StringBuilder thinking = new StringBuilder();
+                final int roundNo = rounds + 1;
                 final String[] upErr = new String[1];
                 DevCloudClient.streamChat(cookie, sidF, content, model, new DevCloudClient.Sink() {
                     @Override
@@ -1138,9 +1141,15 @@ public final class GatewayServer {
 
                     @Override
                     public void onThinking(String text) {
-                        // v1.9.10：内部路径也累积思考内容，循环结束后随响应透出
+                        // v1.9.10 修正：每轮思考即时下发（流式）/ 带轮次标记累计（同步），
+                        // 不再把多轮思考合并成一坨
                         thinking.append(text);
-                        thinkingAll.append(text);
+                        if (sseClient != null) {
+                            // 流式：每轮思考单独成块，带轮次头
+                            String labeled = "── 第" + roundNo + "轮思考 ──\n" + text;
+                            sseClient.data(ProtocolAdapter.chunk(ProtocolAdapter.newCompletionId(), model,
+                                    reasoningDeltaJson(labeled), null));
+                        }
                     }
 
                     @Override
@@ -1205,6 +1214,11 @@ public final class GatewayServer {
                 }
                 List<ToolShim.Call> calls = new ArrayList<>(shim.drain());
                 rounds++;
+                // 同步路径：每轮思考带轮次标记累计（流式已在 onThinking 即时下发）
+                if (thinking.length() > 0) {
+                    thinkingForSync.append("── 第").append(rounds).append("轮思考 ──\n")
+                            .append(thinking).append('\n');
+                }
                 LogRing.log("req#" + n, "内部工具循环 第" + rounds + "轮: 输出 " + turnOut.length()
                         + " 字, 调用 " + calls.size() + " 个, 思考 " + thinking.length() + " 字");
                 if (calls.isEmpty()) {
@@ -1308,7 +1322,8 @@ public final class GatewayServer {
             return;
         }
         final String cid = ProtocolAdapter.newCompletionId();
-        String reasoningOut = thinkingAll.length() > 0 ? thinkingAll.toString() : null;
+        // 同步路径：用带轮次标记的累计版（thinkingForSync）；流式已即时下发，不再重发
+        String reasoningOut = thinkingForSync.length() > 0 ? thinkingForSync.toString() : null;
         if (!stream) {
             json(res, 200, toolCompletion(cid, model, contentOut, toUpCalls(clientCalls), reasoningOut));
             return;
@@ -1317,11 +1332,7 @@ public final class GatewayServer {
             json(res, 500, ProtocolAdapter.error("流式句柄缺失", "internal_error", null));
             return;
         }
-        // role 帧已在循环前发出（sseClient），此处补 content / tool_calls / 收尾
-        // v1.9.10：先下发思考过程（reasoning_content），再下发最终答复
-        if (reasoningOut != null) {
-            sseClient.data(ProtocolAdapter.chunk(cid, model, reasoningDeltaJson(reasoningOut), null));
-        }
+        // 流式路径：思考已在 onThinking 里逐轮即时下发，此处只补最终 content / tool_calls / 收尾
         if (!contentOut.isEmpty()) {
             sseClient.data(ProtocolAdapter.chunk(cid, model, deltaJson(contentOut), null));
         }
