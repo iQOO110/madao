@@ -125,6 +125,13 @@
                         android:layout_marginTop="4dp"
                         android:text="@string/settings_drop_tool_protocol" />
 
+                    <com.google.android.material.materialswitch.MaterialSwitch
+                        android:id="@+id/cb_only_last_user"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="@string/settings_only_last_user" />
+
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"

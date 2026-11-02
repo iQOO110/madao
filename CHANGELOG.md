@@ -40,6 +40,15 @@
   只把用户原话发给码道；关闭则恢复把 tools 转给码道（走 ToolShim 协议）。
   注意：MCP 自动执行不受影响，仍按独立开关工作。
 
+### 只发新消息（不带历史）+ 关闭 MCP 默认 + 未知事件日志
+- **只发新消息**（`Store.isOnlyLastUser`，默认开）：agent 侧每轮携带完整历史，
+  码道是多轮会话导致上下文反复累积。开启后 `openaiToQueryText` 只提取最后一条
+  用户原话（跳过快照碎片），码道侧每次独立上下文；关闭恢复转发完整历史。
+- **MCP 默认关**（`Store.isMcpEnabled` 默认改为 false）：agent 场景下 DSH 自己执行
+  工具，网关不再自动把第三方 MCP 工具喂给码道；需要时在设置里开启。
+- **未知 SSE 事件落日志**：码道的 `artifact` / 文件类事件如果存在，现在会进
+  LogRing（`SSE 未知事件 ...`），为下一步「任务产物自动拉回」提供排查依据。
+
 ### 思考过程透出（reasoning_content）
 - **问题**：码道 SSE 的 "thought" 事件原本只在流式路径部分透出；非流式路径
   `onThinking` 为空；内部工具循环路径（`handleInternalToolPath`）思考只累计不下发。

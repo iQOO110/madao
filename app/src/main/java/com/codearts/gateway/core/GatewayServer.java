@@ -63,6 +63,7 @@ public final class GatewayServer {
         sTrimSystem = store.isTrimSystem();
         sStreamThinking = store.isStreamThinking();
         sDropToolProtocol = store.isDropToolProtocol();
+        sOnlyLastUser = store.isOnlyLastUser();
     }
 
     /** 采集请求里声明的工具名（用于把模型吐出的错名对齐回真实工具名）。 */
@@ -754,6 +755,31 @@ public final class GatewayServer {
         if (messages == null) {
             return "";
         }
+        // v1.9.10：默认只发最后一条用户原话（不转发之前轮次的历史，码道侧保持独立上下文）
+        if (sOnlyLastUser) {
+            String lastUser = "";
+            for (int i = messages.length() - 1; i >= 0; i--) {
+                JSONObject m = messages.optJSONObject(i);
+                if (m == null) {
+                    continue;
+                }
+                String role = m.optString("role", "user");
+                if (!"user".equals(role)) {
+                    continue;
+                }
+                String text = ProtocolAdapter.flattenContent(m.opt("content"));
+                if (sTrimSystem && isRuntimeContextSnapshot(text)) {
+                    continue; // 跳过快照碎片
+                }
+                if (text.isEmpty()) {
+                    continue;
+                }
+                lastUser = text;
+                break;
+            }
+            return lastUser;
+        }
+        // 旧行为：转发完整历史（过滤 system 与快照）
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < messages.length(); i++) {
             JSONObject m = messages.optJSONObject(i);
@@ -838,6 +864,14 @@ public final class GatewayServer {
      * 关：把 tools 转给码道（注入 ToolShim 协议段，让码道模型学着调用）。
      */
     public static volatile boolean sDropToolProtocol = true;
+
+    /**
+     * 网关全局的「只发新消息」开关（默认开；构造时从 Store 同步）。
+     * 开：openaiToQueryText 只提取最后一条用户原话，不转发之前轮次的历史；
+     * 码道侧每次都是独立上下文，不会累积 agent 侧的历史。
+     * 关：转发完整历史（1.9.9 行为）。
+     */
+    public static volatile boolean sOnlyLastUser = true;
 
     /** 工具/MCP 配置状态（密钥只报长度，不回明文）。 */
     private JSONObject toolStateJson() {

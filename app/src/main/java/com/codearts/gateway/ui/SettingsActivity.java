@@ -31,6 +31,7 @@ public class SettingsActivity extends AppCompatActivity {
     private MaterialSwitch cbTrimSystem;
     private MaterialSwitch cbStreamThinking;
     private MaterialSwitch cbDropToolProtocol;
+    private MaterialSwitch cbOnlyLastUser;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -50,6 +51,7 @@ public class SettingsActivity extends AppCompatActivity {
         cbTrimSystem = findViewById(R.id.cb_trim_system);
         cbStreamThinking = findViewById(R.id.cb_stream_thinking);
         cbDropToolProtocol = findViewById(R.id.cb_drop_tool_protocol);
+        cbOnlyLastUser = findViewById(R.id.cb_only_last_user);
 
         etPort.setText(String.valueOf(store.getPort()));
         cbLan.setChecked(store.isLanEnabled());
@@ -60,6 +62,7 @@ public class SettingsActivity extends AppCompatActivity {
         cbTrimSystem.setChecked(store.isTrimSystem());
         cbStreamThinking.setChecked(store.isStreamThinking());
         cbDropToolProtocol.setChecked(store.isDropToolProtocol());
+        cbOnlyLastUser.setChecked(store.isOnlyLastUser());
         findViewById(R.id.btn_notify_settings).setOnClickListener(v -> {
             try {
                 Intent i = new Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS);
@@ -222,9 +225,11 @@ public class SettingsActivity extends AppCompatActivity {
         store.setTrimSystem(cbTrimSystem.isChecked());
         store.setStreamThinking(cbStreamThinking.isChecked());
         store.setDropToolProtocol(cbDropToolProtocol.isChecked());
+        store.setOnlyLastUser(cbOnlyLastUser.isChecked());
         com.codearts.gateway.core.GatewayServer.sTrimSystem = store.isTrimSystem();
         com.codearts.gateway.core.GatewayServer.sStreamThinking = store.isStreamThinking();
         com.codearts.gateway.core.GatewayServer.sDropToolProtocol = store.isDropToolProtocol();
+        com.codearts.gateway.core.GatewayServer.sOnlyLastUser = store.isOnlyLastUser();
         // 常驻通知：渠道 importance 不可变，切开关必须重启网关服务才能重建渠道生效
         boolean notifyChanged = cbNotify.isChecked() != notifyGuardBefore;
 

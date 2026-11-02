@@ -349,8 +349,8 @@ public final class DevCloudClient {
                 break;
             }
             case "done": {
+                LogRing.log("devcloud", "SSE event=" + ev + " " + trim(obj.toString(), 500));
                 sink.target.onEvent(ev, obj);
-                sink.finish(true, null);
                 return true;
             }
             case "error": {
@@ -365,7 +365,11 @@ public final class DevCloudClient {
                 return true;
             }
             default:
-                break;
+                // v1.9.10：未知事件（artifact / file_change / 上游新增类型）落日志，
+                // 便于发现码道透出的产物信息；不终止流
+                LogRing.log("devcloud", "SSE 未知事件 " + ev + ": " + trim(obj.toString(), 300));
+                sink.target.onEvent(ev, obj);
+                return false;
         }
         if ("heartbeat".equals(ev)) {
             // 心跳：告诉客户端"链路活着，上游在干活"，防止第三方 App 判超时（v1.9.9）

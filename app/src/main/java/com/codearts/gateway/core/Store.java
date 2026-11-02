@@ -21,6 +21,7 @@ public final class Store {
     private static final String K_TRIM_SYSTEM = "trim_system";
     private static final String K_STREAM_THINKING = "stream_thinking";
     private static final String K_DROP_TOOL_PROTOCOL = "drop_tool_protocol";
+    private static final String K_ONLY_LAST_USER = "only_last_user";
 
     private static volatile Store sInstance;
 
@@ -429,9 +430,9 @@ public final class Store {
         sp.edit().putString(K_MCP_SERVERS, v == null ? DEFAULT_MCP_SERVERS : v.trim()).apply();
     }
 
-    /** 是否自动把 MCP 工具喂给模型（B 方案开关）。 */
+    /** 是否自动把 MCP 工具喂给模型（B 方案开关，v1.9.10 起默认关）。 */
     public boolean isMcpEnabled() {
-        return sp.getBoolean(K_MCP_ENABLED, true);
+        return sp.getBoolean(K_MCP_ENABLED, false);
     }
 
     public void setMcpEnabled(boolean b) {
@@ -496,6 +497,19 @@ public final class Store {
 
     public void setDropToolProtocol(boolean b) {
         sp.edit().putBoolean(K_DROP_TOOL_PROTOCOL, b).apply();
+    }
+
+    /**
+     * 是否只把「本次新消息」发给码道（v1.9.10，默认开）：
+     * agent 侧每轮把完整历史带过来，网关默认只取最后一条用户原话，
+     * 码道侧不再重复累积多轮上下文。关闭则转发完整历史（旧行为）。
+     */
+    public boolean isOnlyLastUser() {
+        return sp.getBoolean(K_ONLY_LAST_USER, true);
+    }
+
+    public void setOnlyLastUser(boolean b) {
+        sp.edit().putBoolean(K_ONLY_LAST_USER, b).apply();
     }
     /** 用户长按隐藏标记：主页不再自动拉起悬浮球，直到重新保存开关。 */
     public boolean isFloatBallHidden() {
