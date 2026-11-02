@@ -1144,7 +1144,7 @@ public final class GatewayServer {
                         // v1.9.10 修正：每轮思考即时下发（流式）/ 带轮次标记累计（同步），
                         // 不再把多轮思考合并成一坨
                         thinking.append(text);
-                        if (sseClient != null) {
+                        if (sseClient != null && sStreamThinking) {
                             // 流式：每轮思考单独成块，带轮次头
                             String labeled = "── 第" + roundNo + "轮思考 ──\n" + text;
                             sseClient.data(ProtocolAdapter.chunk(ProtocolAdapter.newCompletionId(), model,
@@ -1154,7 +1154,9 @@ public final class GatewayServer {
 
                     @Override
                     public void onEvent(String eventName, JSONObject raw) {
-                        // 内部循环不需要事件明细
+                        // v1.9.10：码道提问/确认类事件转发为可见 content 帧；
+                        // 提问文本挂到 query 尾部，下一轮回灌时模型知道"用户问了什么"
+                        forwardUpstreamQuestion(eventName, raw, sseClient, model, n, query);
                     }
 
                     @Override
@@ -1346,6 +1348,47 @@ public final class GatewayServer {
                 clientCalls.isEmpty() ? "stop" : "tool_calls"));
         sseClient.data("[DONE]");
         sseClient.close();
+    }
+
+    /**
+     * 上游提问/确认事件（ask/confirm/question/clarif 类）转发给客户端。
+     * v1.9.10：码道可能以事件形式向用户提问并停住等答案；网关把它转成
+     * 可见 content 帧（带 [码道提问] 前缀），agent 能看见并回复，避免干等卡死。
+     *
+     * @param queryAppend 回灌用的 query（可为 null，仅流式转发）
+     */
+    private void forwardUpstreamQuestion(String eventName, JSONObject raw,
+                                         SseWriter sse, String model, long n,
+                                         StringBuilder queryAppend) {
+        if (raw == null || eventName == null) {
+            return;
+        }
+        String low = eventName.toLowerCase();
+        boolean isAsk = low.contains("ask") || low.contains("confirm")
+                || low.contains("question") || low.contains("clarif");
+        if (!isAsk) {
+            return;
+        }
+        String q = raw.optString("content", raw.optString("message",
+                raw.optString("text", "")));
+        if (q.isEmpty() && raw.has("data")) {
+            JSONObject d = raw.optJSONObject("data");
+            if (d != null) {
+                q = d.optString("content", d.optString("message", ""));
+            }
+        }
+        if (q.isEmpty()) {
+            q = raw.toString();
+        }
+        LogRing.log("req#" + n, "上游提问事件 " + eventName + " → 转发给客户端: "
+                + DevCloudClient.trim(q, 200));
+        if (sse != null) {
+            sse.data(ProtocolAdapter.chunk(ProtocolAdapter.newCompletionId(), model,
+                    deltaJson("\n\n[码道提问] " + q + "\n（请在你的下一条回复中直接给出答案，码道会据此继续）\n"), null));
+        }
+        if (queryAppend != null) {
+            queryAppend.append("\n[码道提问] ").append(q);
+        }
     }
 
     private static ToolUpstream.Call toUpCall(ToolShim.Call c) {
@@ -1574,6 +1617,8 @@ public final class GatewayServer {
                 @Override
                 public void onEvent(String eventName, JSONObject raw) {
                     noteEvent(eventName, raw, n, seenEvents, eventCounts);
+                    // v1.9.10：码道提问/确认类事件转发为可见 content 帧，避免 agent 干等
+                    forwardUpstreamQuestion(eventName, raw, sse, model, n, null);
                 }
 
                 @Override
