@@ -17,12 +17,18 @@
 
 基于 1.9.9 的本地修改（ARM64 Ubuntu 构建支持 + 两个功能修复）：
 
-### 传参优化（system prompt 不再整段塞进码道）
-- **问题**：DSH 等客户端的 system prompt 有 10KB+（工具清单、硬约束、运行时上下文快照），
-  码道是多轮续聊会话，之前整段拍进对话框后每轮残留在上游上下文里，浪费 token 并稀释指令。
-- **修复**：`openaiToQueryText()` 默认把 system 消息压缩成「前 4 行 + 省略说明」
-  （`summarizeSystem`）；user / assistant / tool 历史原样保留。
-- **开关**：设置页新增「精简系统提示词转发」（`Store.isTrimSystem`，默认开），
+### 传参优化（agent 注入内容不再转发给码道）
+- **问题**：DSH 等 agent 客户端每轮把 system prompt 全文 + 运行时上下文快照
+  （"Current runtime context..."，含工作目录/时区/Time sampled 等环境信息）
+  原样带进 OpenAI 请求。码道是多轮续聊会话，这些内容既非用户原话、又会随
+  每轮请求反复注入，导致上下文越滚越大、指令被稀释。
+- **修复**：`openaiToQueryText()` 默认直接丢弃：
+  - 整条 system 消息；
+  - 以 "Current runtime context" 开头的 user 消息（或含 Time sampled + 工作目录/
+    浏览器时区特征的环境块）；
+  只保留用户原话与 assistant 历史（工具调用/结果仍渲染成协议文本，模型需要
+  看见自己之前的调用与返回）。
+- **开关**：设置页「隐藏 agent 注入的上下文」（`Store.isTrimSystem`，默认开），
   关闭后恢复 1.9.9 行为（原样转发）。
 
 ### 思考过程透出（reasoning_content）

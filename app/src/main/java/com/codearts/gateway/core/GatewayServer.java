@@ -727,20 +727,29 @@ public final class GatewayServer {
     }
 
     /**
-     * OpenAI messages → 拍平文本（保留系统/助手标注，并把工具调用与工具结果渲染进历史）。
+     * 把 agent 客户端（DSH 等）的 messages 还原成发给码道的 query 文本。
      *
-     * <p>v1.9.10 传参优化：码道是<b>多轮续聊</b>会话，之前轮次塞进去的文本还会残留在
-     * 上游上下文里。而 DSH 等客户端的 system prompt 动辄 10KB+（工具清单、硬约束、
-     * 运行时上下文快照每轮全量携带），整段拍进码道对话框只会浪费 token 并稀释指令。
-     * 因此 system 消息压缩成一行摘要，只保留"前 N 行 + 长度提示"；user/assistant/tool
-     * 历史原样保留。
+     * <p>码道是<b>多轮续聊</b>会话，之前轮次塞进去的文本还会残留在上游上下文里。
+     * DSH 等客户端每轮携带：
+     * <ul>
+     *   <li>system 消息：10KB+ 的工具清单 / 硬约束 / 运行时说明；</li>
+     *   <li>「Current runtime context」运行时快照 user 消息：工作目录 / 时区 /
+     *       文件策略 / GUI URL / Time sampled… 这些全是环境状态，不是用户原话。</li>
+     * </ul>
+     * 这些内容与「用户说了什么」无关，整段拍进码道只会浪费 token、稀释指令，
+     * 并在多轮会话里反复累积。因此默认丢弃：
+     * <ul>
+     *   <li>整条 system 消息；</li>
+     *   <li>以「Current runtime context」开头的 user 消息（含 Time sampled 时间戳）；</li>
+     * </ul>
+     * 只保留真正的 user 原话与 assistant 历史（assistant.tool_calls / role=tool 仍渲染
+     * 成工具协议文本，模型需要看见自己之前的调用与结果）。
      */
     static String openaiToQueryText(JSONObject openai) {
         JSONArray messages = openai == null ? null : openai.optJSONArray("messages");
         if (messages == null) {
             return "";
         }
-        boolean trimSystem = sTrimSystem;
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < messages.length(); i++) {
             JSONObject m = messages.optJSONObject(i);
@@ -749,6 +758,14 @@ public final class GatewayServer {
             }
             String role = m.optString("role", "user");
             String text = ProtocolAdapter.flattenContent(m.opt("content"));
+            if (sTrimSystem) {
+                if ("system".equals(role)) {
+                    continue;
+                }
+                if (isRuntimeContextSnapshot(text)) {
+                    continue;
+                }
+            }
             if ("tool".equals(role) || "function".equals(role)) {
                 // 工具结果：渲染成文本协议的一部分，模型才能看到"自己调用后的返回"
                 text = ToolShim.renderToolResult(m);
@@ -757,9 +774,6 @@ public final class GatewayServer {
                     ? ToolShim.renderAssistantToolCalls(m.optJSONArray("tool_calls")) : "";
             if (text.isEmpty() && calls.isEmpty()) {
                 continue;
-            }
-            if ("system".equals(role) && trimSystem) {
-                text = summarizeSystem(text);
             }
             if (sb.length() > 0) {
                 sb.append("\n\n");
@@ -783,38 +797,34 @@ public final class GatewayServer {
         return sb.toString();
     }
 
+    /**
+     * 判断 user 消息是否为 agent 运行时上下文快照（DSH 的「Current runtime context.
+     * This snapshot supersedes earlier runtime-context snapshots.」+ 工作目录 / 时区 /
+     * Time sampled 等环境信息），而非用户原话。
+     */
+    static boolean isRuntimeContextSnapshot(String text) {
+        if (text == null) {
+            return false;
+        }
+        String t = text.trim();
+        if (t.startsWith("Current runtime context")) {
+            return true;
+        }
+        // 有些客户端把快照拆成多条 user 消息：含 Time sampled / 浏览器时区 / 工作目录
+        // 等环境行、且不含用户实际内容的，视为快照碎片
+        if (t.length() > 4000
+                && t.contains("Time sampled")
+                && (t.contains("Current working directory") || t.contains("Browser time zone"))) {
+            return true;
+        }
+        return false;
+    }
+
     /** 网关全局的 system 压缩开关（默认开；构造时从 Store 同步，单元测试可单独置位）。 */
     public static volatile boolean sTrimSystem = true;
 
     /** 网关全局的思考过程透传开关（默认开；构造时从 Store 同步）。 */
     public static volatile boolean sStreamThinking = true;
-
-    /**
-     * 压缩 system 文本：保留前 4 行（一般含身份与最重要的指令），其余替换成
-     * 一行截断说明。空文本原样返回。
-     */
-    static String summarizeSystem(String text) {
-        if (text == null || text.isEmpty()) {
-            return "";
-        }
-        String[] lines = text.split("\n");
-        int keep = Math.min(lines.length, 4);
-        if (keep == lines.length) {
-            return text;
-        }
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < keep; i++) {
-            if (i > 0) {
-                sb.append('\n');
-            }
-            sb.append(lines[i]);
-        }
-        sb.append("\n（系统提示共 ").append(lines.length).append(" 行，其余 ").append(lines.length - keep)
-                .append(" 行为运行时环境说明，已省略；如需引用请向用户询问）");
-        return sb.toString();
-    }
-
-
 
     /** 工具/MCP 配置状态（密钥只报长度，不回明文）。 */
     private JSONObject toolStateJson() {

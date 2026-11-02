@@ -45,8 +45,8 @@
     <string name="settings_notify">常驻通知保护（前台服务）</string>
     <string name="settings_notify_help">网关运行时通过常驻通知保持前台优先级。关闭通知渠道后系统仍保留前台状态，但你会看不到运行提示；建议保持开启并允许通知。</string>
     <string name="settings_notify_open">打开通知设置</string>
-    <string name="settings_trim_system">精简系统提示词转发\n关闭后把客户端完整 system prompt 转发给码道</string>
-    <string name="settings_trim_system_help">码道是多轮会话，超长 system 提示词（如 DSH 注入的工具清单）每轮重复只会浪费 token 并稀释指令。开启后仅转发前 4 行 + 省略说明；关闭则原样转发。</string>
+    <string name="settings_trim_system">隐藏 agent 注入的上下文\n关闭后把客户端完整 system/运行时快照转发给码道</string>
+    <string name="settings_trim_system_help">码道是多轮会话，agent 侧（如 DSH）每轮会把 system prompt 与运行时上下文快照原样带过来，反复注入既浪费 token 又稀释用户原话。开启后直接丢弃这些消息，只把用户原话与真实对话历史发给码道；关闭则恢复完整转发。</string>
     <string name="settings_stream_thinking">透传码道思考过程（reasoning_content）\n关闭后响应里不再带思考内容</string>
     <string name="settings_float_help">悬浮球操作：拖动移动位置；单击启动/停止网关；长按隐藏（本次不再弹出，重新开启开关可恢复）。需授予「显示在其他应用上层」权限。</string>
     <string name="settings_keepalive_help">保活机制说明：\n· 前台服务 + 常驻通知：基础保活，系统优先不杀\n· CPU 保活：防止息屏后 CPU 休眠导致流式转发中断（略增耗电）\n· 开机自启：重启后自动拉起网关\n· 悬浮球：快速启停 + 视觉确认\n\n提示：厂商 ROM（华为/小米等）还需要在系统设置里允许本应用「后台运行/自启动」，否则任何保活手段都会被系统冻结。</string>
