@@ -1146,20 +1146,18 @@ public final class GatewayServer {
 
                     @Override
                     public void onThinking(String text) {
-                        // v1.9.10 修正：思考即时下发（同一下游 id 连续 delta 帧，客户端按
-                        // 正常 reasoning 流渲染）；跨轮边界发带轮次头的标记帧。
-                        // 关键：所有 reasoning delta 帧必须用同一个 id，DSH 才会拼成
-                        // 一条连续的 reasoning 流；轮次头只是流内的分隔标记
+                        // v1.9.10 修正：思考即时下发。所有 reasoning delta 帧共用
+                        // 同一个 cid（OpenAI SSE 里 id 是「一次响应的标识」，中途换 id
+                        // 会让 DSH 把流切开、块被拆开渲染——这就是思考被合并的根因）。
+                        // 轮次分隔用帧内标记实现（客户端在流内看到 ── 第N轮思考 ── 即分块）
                         thinking.append(text);
                         if (sseClient != null && sStreamThinking) {
-                            if (!thinkingEmitted[0]) {
-                                // 本轮第一个思考帧：先补一个轮次头
-                                thinkingEmitted[0] = true;
-                                sseClient.data(ProtocolAdapter.chunk(cid, model,
-                                        reasoningDeltaJson("── 第" + roundNo + "轮思考 ──\n"), null));
-                            }
                             sseClient.data(ProtocolAdapter.chunk(cid, model,
-                                    reasoningDeltaJson(text), null));
+                                    reasoningDeltaJson(
+                                            (thinkingEmitted[0] ? "" : "── 第" + roundNo + "轮思考 ──\n")
+                                            + text),
+                                    null));
+                            thinkingEmitted[0] = true;
                         }
                     }
 
