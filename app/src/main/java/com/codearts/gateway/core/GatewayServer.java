@@ -1125,6 +1125,16 @@ public final class GatewayServer {
         try {
             final String sessionKey = sessionKey(null, openai);
             String sid = ensureSession(cookie, sessionKey, model, n);
+            // v1.9.10：上一轮码道停在 ask_user 提问处等答案。本轮 query 里夹带
+            // 「原提问 JSON + 用户新消息」回灌，码道才知道该按哪个选项继续。
+            // 只在首轮回灌一次，回灌后清掉（避免下轮重复带旧提问）
+            String pendingQ = pendingUpstreamQuestions.remove(sessionKey);
+            if (pendingQ != null && pendingQ.length() > 0 && !openai.optBoolean("new_chat", false)) {
+                query.append("\n[系统] 上一轮你向用户提问后，用户已回复。上一轮你的提问（原文 JSON）：\n")
+                        .append(pendingQ)
+                        .append("\n用户的新回复是：");
+                LogRing.log("req#" + n, "回灌上轮码道提问: " + DevCloudClient.trim(pendingQ, 120));
+            }
             while (rounds <= maxRounds) {
                 String content = query.toString()
                         + (proto.length() > 0 ? "\n\n" + proto : "");
@@ -1165,7 +1175,8 @@ public final class GatewayServer {
                     public void onEvent(String eventName, JSONObject raw) {
                         // v1.9.10：码道提问/确认类事件转发为可见 content 帧；
                         // 提问文本挂到 query 尾部，下一轮回灌时模型知道"用户问了什么"
-                        forwardUpstreamQuestion(eventName, raw, sseClient, model, n, query);
+                        forwardUpstreamQuestion(eventName, raw, sseClient, model, n, query,
+                                sessionKey, stream);
                     }
 
                     @Override
@@ -1367,7 +1378,8 @@ public final class GatewayServer {
      */
     private void forwardUpstreamQuestion(String eventName, JSONObject raw,
                                          SseWriter sse, String model, long n,
-                                         StringBuilder queryAppend) {
+                                         StringBuilder queryAppend,
+                                         String sessionKey, boolean stream) {
         if (raw == null || eventName == null) {
             return;
         }
@@ -1377,22 +1389,16 @@ public final class GatewayServer {
         if (!isAsk) {
             return;
         }
-        String q = raw.optString("content", raw.optString("message",
-                raw.optString("text", "")));
-        if (q.isEmpty() && raw.has("data")) {
-            JSONObject d = raw.optJSONObject("data");
-            if (d != null) {
-                q = d.optString("content", d.optString("message", ""));
-            }
-        }
-        if (q.isEmpty()) {
-            q = raw.toString();
-        }
+        String q = raw.toString(); // 完整提问 JSON（含 question_id / options）原样带给客户端与下一轮回灌
         LogRing.log("req#" + n, "上游提问事件 " + eventName + " → 转发给客户端: "
                 + DevCloudClient.trim(q, 200));
-        if (sse != null) {
+        if (sse != null && stream) {
             sse.data(ProtocolAdapter.chunk(ProtocolAdapter.newCompletionId(), model,
                     deltaJson("\n\n[码道提问] " + q + "\n（请在你的下一条回复中直接给出答案，码道会据此继续）\n"), null));
+        }
+        if (sessionKey != null) {
+            // 存到会话级 pending，下一轮请求进来时和"用户新回复"一起回灌给码道
+            pendingUpstreamQuestions.put(sessionKey, q);
         }
         if (queryAppend != null) {
             queryAppend.append("\n[码道提问] ").append(q);
@@ -1414,6 +1420,11 @@ public final class GatewayServer {
     }
 
     /** 复用/新建上游会话；坏会话（上游掐断过）自动废弃重建。 */
+    /** 网关会话级：码道最近一次 ask_user 提问的完整 JSON。v1.9.10 新增：
+     *  下一轮请求进来时把「用户回复 + 原提问」一起回灌给码道，码道才知道该按哪个选项继续。
+     *  key=网关 sessionKey（即 devCloudSessions 的 key） */
+    private final Map<String, String> pendingUpstreamQuestions = new ConcurrentHashMap<>();
+
     private String ensureSession(String cookie, String sessionKey, String model, long n)
             throws Exception {
         String sid = devCloudSessions.get(sessionKey);
@@ -1626,7 +1637,7 @@ public final class GatewayServer {
                 public void onEvent(String eventName, JSONObject raw) {
                     noteEvent(eventName, raw, n, seenEvents, eventCounts);
                     // v1.9.10：码道提问/确认类事件转发为可见 content 帧，避免 agent 干等
-                    forwardUpstreamQuestion(eventName, raw, sse, model, n, null);
+                    forwardUpstreamQuestion(eventName, raw, sse, model, n, null, null, true);
                 }
 
                 @Override
