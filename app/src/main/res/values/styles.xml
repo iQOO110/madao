@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- 主按钮：蓝色胶囊 -->
+    <style name="Apple.Button" parent="Widget.Material3.Button">
+        <item name="cornerRadius">999dp</item>
+        <item name="android:minHeight">50dp</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:letterSpacing">0</item>
+    </style>
+
+    <!-- 次按钮：浅灰底 + 蓝字胶囊 -->
+    <style name="Apple.Button.Tonal" parent="Widget.Material3.Button.TonalButton">
+        <item name="cornerRadius">999dp</item>
+        <item name="backgroundTint">@color/apple_pearl</item>
+        <item name="android:textColor">@color/brand_primary</item>
+        <item name="android:minHeight">46dp</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:letterSpacing">0</item>
+    </style>
+
+    <!-- 描边按钮：细边框胶囊 -->
+    <style name="Apple.Button.Outlined" parent="Widget.Material3.Button.OutlinedButton">
+        <item name="cornerRadius">999dp</item>
+        <item name="strokeColor">@color/apple_hairline</item>
+        <item name="android:textColor">@color/apple_ink</item>
+        <item name="android:minHeight">46dp</item>
+        <item name="android:textSize">15sp</item>
+    </style>
+
+    <!-- 纯文字按钮 -->
+    <style name="Apple.Button.Text" parent="Widget.Material3.Button.TextButton">
+        <item name="android:textColor">@color/brand_primary</item>
+        <item name="android:textSize">15sp</item>
+    </style>
+
+    <style name="Apple.ToolbarTitle" parent="TextAppearance.Material3.TitleLarge">
+        <item name="android:textColor">@color/apple_ink</item>
+        <item name="android:textSize">22sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="Apple.SectionHeader" parent="TextAppearance.Material3.LabelLarge">
+        <item name="android:textColor">@color/apple_muted</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:letterSpacing">0.08</item>
+    </style>
+
+    <style name="Apple.Footnote" parent="TextAppearance.Material3.BodySmall">
+        <item name="android:textColor">@color/apple_muted</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:lineSpacingExtra">3dp</item>
+    </style>
+
+</resources>

@@ -8,7 +8,7 @@
     <com.google.android.material.appbar.AppBarLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="?attr/colorSurface"
+        android:background="@color/apple_parchment"
         app:elevation="0dp">
 
         <com.google.android.material.appbar.MaterialToolbar
@@ -16,7 +16,8 @@
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
             app:navigationIcon="@drawable/ic_back"
-            app:title="@string/models_title" />
+            app:titleTextAppearance="@style/Apple.ToolbarTitle"
+        app:title="@string/models_title" />
     </com.google.android.material.appbar.AppBarLayout>
 
     <LinearLayout
@@ -110,7 +111,7 @@
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btn_empty_retry"
-                    style="@style/Widget.Material3.Button.TonalButton"
+                    style="@style/Apple.Button.Tonal"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="18dp"

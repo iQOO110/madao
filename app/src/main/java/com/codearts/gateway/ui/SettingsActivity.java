@@ -13,7 +13,6 @@ import androidx.appcompat.widget.Toolbar;
 
 import com.codearts.gateway.R;
 import com.codearts.gateway.core.Store;
-import com.codearts.gateway.core.ToolSelfTest;
 import com.codearts.gateway.service.FloatingBallService;
 import com.codearts.gateway.service.GatewayService;
 import com.google.android.material.materialswitch.MaterialSwitch;
@@ -30,7 +29,6 @@ public class SettingsActivity extends AppCompatActivity {
     private MaterialSwitch cbNotify;
     private MaterialSwitch cbTrimSystem;
     private MaterialSwitch cbStreamThinking;
-    private MaterialSwitch cbDropToolProtocol;
     private MaterialSwitch cbOnlyLastUser;
 
     @Override
@@ -50,7 +48,6 @@ public class SettingsActivity extends AppCompatActivity {
         cbNotify = findViewById(R.id.cb_notify);
         cbTrimSystem = findViewById(R.id.cb_trim_system);
         cbStreamThinking = findViewById(R.id.cb_stream_thinking);
-        cbDropToolProtocol = findViewById(R.id.cb_drop_tool_protocol);
         cbOnlyLastUser = findViewById(R.id.cb_only_last_user);
 
         etPort.setText(String.valueOf(store.getPort()));
@@ -61,8 +58,15 @@ public class SettingsActivity extends AppCompatActivity {
         cbNotify.setChecked(store.isNotifyGuard());
         cbTrimSystem.setChecked(store.isTrimSystem());
         cbStreamThinking.setChecked(store.isStreamThinking());
-        cbDropToolProtocol.setChecked(store.isDropToolProtocol());
         cbOnlyLastUser.setChecked(store.isOnlyLastUser());
+
+        android.widget.TextView tvLoginState = findViewById(R.id.tv_login_state);
+        String cookieNow = store.getCookie();
+        tvLoginState.setText(cookieNow.isEmpty()
+                ? "未登录 · 点下方按钮网页登录或直接粘贴 Cookie"
+                : "已登录 · 会话 …" + cookieNow.substring(Math.max(0, cookieNow.length() - 6)));
+        findViewById(R.id.btn_login_cookie).setOnClickListener(v -> showLoginDialog());
+
         findViewById(R.id.btn_notify_settings).setOnClickListener(v -> {
             try {
                 Intent i = new Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS);
@@ -84,100 +88,19 @@ public class SettingsActivity extends AppCompatActivity {
         });
 
         findViewById(R.id.btn_save).setOnClickListener(v -> save());
-        findViewById(R.id.btn_tool).setOnClickListener(v -> showToolDialog());
-        findViewById(R.id.btn_selftest).setOnClickListener(v -> runSelfTest());
     }
 
-    /** 工具链一键自检：每环真实报错直接弹窗 + 落盘 codearts-selftest.json。 */
-    private void runSelfTest() {
-        Toast.makeText(this, "正在自检…（连接上游与 MCP，约几秒）", Toast.LENGTH_SHORT).show();
-        new Thread(() -> {
-            final ToolSelfTest.Report r = ToolSelfTest.run(store);
-            runOnUiThread(() -> {
-                StringBuilder sb = new StringBuilder();
-                sb.append(r.allOk ? "✅ 全部通过\n" : "❌ 有失败项\n");
-                for (ToolSelfTest.Item it : r.items) {
-                    sb.append(it.ok ? "  ✓ " : "  ✗ ").append(it.name).append('\n');
-                    if (!it.detail.isEmpty()) {
-                        sb.append("      ").append(it.detail.replace("\n", "\n      ")).append('\n');
-                    }
-                }
-                sb.append('\n').append(r.fixHint);
-                new androidx.appcompat.app.AlertDialog.Builder(this)
-                        .setTitle("工具链自检（" + r.ts + " " + r.build + "）")
-                        .setMessage(sb.toString())
-                        .setPositiveButton("知道了", null)
-                        .show();
-            });
-        }, "selftest").start();
-    }
-
-    /** 工具调用 / MCP 设置：工具上游 + 任意第三方 MCP 服务器。 */
-    private void showToolDialog() {
-        final float dp = getResources().getDisplayMetrics().density;
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.VERTICAL);
-        int pad = (int) (16 * dp);
-        box.setPadding(pad, pad / 2, pad, 0);
-
-        final EditText etBase = new EditText(this);
-        etBase.setHint(R.string.tool_hint_base);
-        // 默认给一个可用地址，用户只需贴 Key 即可（留空=关闭工具路径）
-        String base0 = store.getToolBase();
-        if (base0 == null || base0.trim().isEmpty()) {
-            base0 = "http://127.0.0.1:3065/v1";
-        }
-        etBase.setText(base0);
-        etBase.setTextSize(12);
-        box.addView(etBase);
-
-        final EditText etKey = new EditText(this);
-        etKey.setHint(R.string.tool_hint_key);
-        etKey.setText(store.getToolKey());
-        etKey.setTextSize(12);
-        box.addView(etKey);
-
-        final EditText etModel = new EditText(this);
-        etModel.setHint(R.string.tool_hint_model);
-        etModel.setText(store.getToolModel());
-        etModel.setTextSize(12);
-        box.addView(etModel);
-
-        final EditText etMcp = new EditText(this);
-        etMcp.setHint(R.string.tool_hint_mcp);
-        etMcp.setText(store.getMcpServers());
-        etMcp.setTextSize(11);
-        etMcp.setMinLines(2);
-        box.addView(etMcp);
-
-        final MaterialSwitch swEnable = new MaterialSwitch(this);
-        swEnable.setText(R.string.tool_hint_enable);
-        swEnable.setTextSize(12);
-        swEnable.setChecked(store.isMcpEnabled());
-        box.addView(swEnable);
-
-        final MaterialSwitch swMutate = new MaterialSwitch(this);
-        swMutate.setText(R.string.tool_hint_mutating);
-        swMutate.setTextSize(12);
-        swMutate.setChecked(store.isAllowMutating());
-        box.addView(swMutate);
-
+    /** 登录入口：打开全屏网页登录，或直接粘贴 Cookie。 */
+    private void showLoginDialog() {
         new androidx.appcompat.app.AlertDialog.Builder(this)
-                .setTitle(R.string.tool_dialog_title)
-                .setView(box)
-                .setPositiveButton("保存", (d, w) -> {
-                    String mcp = etMcp.getText() == null ? "" : etMcp.getText().toString().trim();
-                    if (!mcp.isEmpty() && !mcp.startsWith("[")) {
-                        Toast.makeText(this, "MCP 配置需是 JSON 数组，已忽略本次修改", Toast.LENGTH_LONG).show();
+                .setTitle("登录 CodeArts 码道")
+                .setItems(new String[]{"打开登录页（网页登录）", "粘贴 Cookie"}, (d, which) -> {
+                    if (which == 0) {
+                        startActivity(new Intent(this, LoginActivity.class));
                     } else {
-                        store.setMcpServers(mcp.isEmpty() ? Store.DEFAULT_MCP_SERVERS : mcp);
+                        startActivity(new Intent(this, LoginActivity.class)
+                                .putExtra(LoginActivity.EXTRA_PASTE, true));
                     }
-                    store.setToolBase(etBase.getText() == null ? "" : etBase.getText().toString());
-                    store.setToolKey(etKey.getText() == null ? "" : etKey.getText().toString());
-                    store.setToolModel(etModel.getText() == null ? "" : etModel.getText().toString());
-                    store.setMcpEnabled(swEnable.isChecked());
-                    store.setAllowMutating(swMutate.isChecked());
-                    Toast.makeText(this, R.string.tool_saved, Toast.LENGTH_LONG).show();
                 })
                 .setNegativeButton("取消", null)
                 .show();
@@ -224,11 +147,9 @@ public class SettingsActivity extends AppCompatActivity {
         store.setNotifyGuard(cbNotify.isChecked());
         store.setTrimSystem(cbTrimSystem.isChecked());
         store.setStreamThinking(cbStreamThinking.isChecked());
-        store.setDropToolProtocol(cbDropToolProtocol.isChecked());
         store.setOnlyLastUser(cbOnlyLastUser.isChecked());
         com.codearts.gateway.core.GatewayServer.sTrimSystem = store.isTrimSystem();
         com.codearts.gateway.core.GatewayServer.sStreamThinking = store.isStreamThinking();
-        com.codearts.gateway.core.GatewayServer.sDropToolProtocol = store.isDropToolProtocol();
         com.codearts.gateway.core.GatewayServer.sOnlyLastUser = store.isOnlyLastUser();
         // 常驻通知：渠道 importance 不可变，切开关必须重启网关服务才能重建渠道生效
         boolean notifyChanged = cbNotify.isChecked() != notifyGuardBefore;

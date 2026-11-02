@@ -80,6 +80,28 @@
   但悬浮窗不出现/网关被杀"。App 已做前台先行 + 延迟重试 + try-catch 兜底，
   但无法对抗极端 ROM 查杀。
 
+### A14. 码道提问的回答协议未实现（中，功能未闭环）
+- 网关已能把码道 `ask_user` 类事件转成标准 `tool_calls`（按客户端 tools schema
+  补齐 `questions[].id` 等字段），agent 侧能弹出选项并作答；但**码道侧的提问卡片
+  需要一条专门的应答请求**（携带 `question_id` / `call_id` / `turn_id` + 用户答案）
+  才会被置为"已回答"。
+- 当前实现只会把「上一轮提问 + 用户回复」当**普通聊天消息**回灌
+  （`GatewayServer.buildPendingContext`，内部路径与普通路径同款），码道会把这条
+  消息当新输入，原提问卡片仍停留在等待状态。
+- 缺少协议证据：尚未抓取网页端"回答提问"的请求 URL / body / 特殊请求头。
+- 待办：拿到抓包后，在 `DevCloudClient` 增加 `answerQuestion(cookie, sessionId,
+  questionId, callId, turnId, answers)`，body 形如
+  `{question_id, call_id, turn_id, answers:[...]}`；`handleChat` 检测到 pending
+  提问时先调用它，再发送后续消息。
+
+### A15. 码道产物未透传（低，暂缓）
+- `DevCloudClient` 会把 `deliverable` / `artifact` / `file` / `file_diff` /
+  `task_result` 等事件交给 `Sink.onEvent` 并落日志；`GatewayServer` 只做计数。
+- 曾尝试把产物摘要以 `[码道产物]` 文本透传给 agent，但实测 `file_diff` 事件高频、
+  字段常为空（如 `{"diff":[],"ts":...}`），透传只会产生噪声，**已回滚**。
+- 待办：待确认产物事件里可靠的字段（真实文件 URL / 内容）后再实现；若只有工作区
+  路径或 file_id，需网关带 Cookie 下载后再转发。
+
 ## B. 历史已修复（防回归存档，当前代码已验证落实）
 
 | 版本 | 问题 | 修复验证点 |

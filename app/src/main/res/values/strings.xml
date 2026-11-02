@@ -35,6 +35,19 @@
     <string name="login_hint">在下方完成 CodeArts 码道登录，成功后点「保存会话」，App 会抓取登录 Cookie（cftk）。</string>
     <string name="login_save">保存会话</string>
     <string name="login_saved">已保存会话</string>
+    <string name="login_reload">重新加载</string>
+    <string name="login_copy">复制 Cookie</string>
+    <string name="login_paste">粘贴 Cookie</string>
+    <string name="login_paste_title">粘贴 Cookie</string>
+    <string name="login_paste_hint">把浏览器里码道的完整 Cookie 粘贴到这里（形如 name=value; name2=value2）</string>
+    <string name="login_paste_invalid">Cookie 里没有会话键（cftk/session），请确认已登录并复制完整</string>
+    <string name="login_paste_field_hint">粘贴完整 Cookie（也可长按输入框用系统粘贴）</string>
+    <string name="login_read_clip">读取剪贴板</string>
+    <string name="login_history">历史 Cookie</string>
+    <string name="login_history_title">选择历史 Cookie</string>
+    <string name="login_history_empty">还没有历史 Cookie，先登录或粘贴保存一次</string>
+    <string name="settings_login_cookie">登录码道 / 粘贴 Cookie\n网页登录或手动粘贴会话 Cookie</string>
+    <string name="settings_login_cookie_help">登录失效或换设备时，可重新打开码道网页登录，或直接从浏览器复制 Cookie 粘贴保存。</string>
     <string name="checkin_doing">正在签到…</string>
     <string name="checkin_need_login">请先登录 DevCloud</string>
     <string name="btn_settings">设置</string>
@@ -45,13 +58,13 @@
     <string name="settings_notify">常驻通知保护（前台服务）</string>
     <string name="settings_notify_help">网关运行时通过常驻通知保持前台优先级。关闭通知渠道后系统仍保留前台状态，但你会看不到运行提示；建议保持开启并允许通知。</string>
     <string name="settings_notify_open">打开通知设置</string>
-    <string name="settings_trim_system">隐藏 agent 注入的上下文\n关闭后把客户端完整 system/运行时快照转发给码道</string>
-    <string name="settings_trim_system_help">码道是多轮会话，agent 侧（如 DSH）每轮会把 system prompt 与运行时上下文快照原样带过来，反复注入既浪费 token 又稀释用户原话。开启后直接丢弃这些消息，只把用户原话与真实对话历史发给码道；关闭则恢复完整转发。</string>
+    <string name="settings_trim_system">过滤 agent 注入内容\n只把用户原始输入发给码道</string>
+    <string name="settings_trim_system_help">codex / Claude Code / DSH 等 agent 每轮会夹带 system 提示、工具说明、运行时上下文快照等注入内容，反复灌给码道既浪费 token 又稀释用户原话。开启后：丢弃 system/开发者提示与工具说明，剥离 user 消息里的 &lt;system-reminder&gt; 等注入块，只发用户原始输入；关闭则完整转发。</string>
     <string name="settings_stream_thinking">透传码道思考过程（reasoning_content）\n关闭后响应里不再带思考内容</string>
     <string name="settings_drop_tool_protocol">隐藏 agent 工具清单\n关闭后把 DSH 等携带的 tools 与协议段转给码道</string>
     <string name="settings_drop_tool_protocol_help">agent 侧（DSH）自己执行工具，码道侧不需要知道其工具清单；默认丢弃以省 token、稀释对话。关闭则把 tools 转给码道（走 ToolShim 协议，让码道模型学着调用）。</string>
-    <string name="settings_only_last_user">每轮只发新消息（不带历史）\n关闭后把完整对话历史转给码道</string>
-    <string name="settings_only_last_user_help">码道是多轮会话，agent 侧每轮把完整历史带过来会反复累积。开启后网关只把本次用户新说的话发给码道，码道侧每次都是独立上下文；需要跨轮记忆时再关闭。</string>
+    <string name="settings_only_last_user">每轮只发用户原始输入（不带历史）\n关闭后转发完整对话历史</string>
+    <string name="settings_only_last_user_help">码道是多轮会话，agent 侧每轮把完整历史带过来会反复累积。开启后网关只抽取最后一条用户原始输入发给码道，码道侧每次都是独立上下文；需要跨轮记忆时再关闭。</string>
     <string name="settings_float_help">悬浮球操作：拖动移动位置；单击启动/停止网关；长按隐藏（本次不再弹出，重新开启开关可恢复）。需授予「显示在其他应用上层」权限。</string>
     <string name="settings_keepalive_help">保活机制说明：\n· 前台服务 + 常驻通知：基础保活，系统优先不杀\n· CPU 保活：防止息屏后 CPU 休眠导致流式转发中断（略增耗电）\n· 开机自启：重启后自动拉起网关\n· 悬浮球：快速启停 + 视觉确认\n\n提示：厂商 ROM（华为/小米等）还需要在系统设置里允许本应用「后台运行/自启动」，否则任何保活手段都会被系统冻结。</string>
     <string name="btn_tool_settings">工具 / MCP 设置</string>

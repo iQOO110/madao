@@ -3,15 +3,17 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="?android:attr/colorBackground"
     android:orientation="vertical">
 
     <com.google.android.material.appbar.MaterialToolbar
         android:id="@+id/toolbar"
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
-        android:background="?attr/colorSurface"
+        android:background="@color/apple_parchment"
         app:navigationIcon="@drawable/ic_back"
-        app:title="设置" />
+        app:title="设置"
+        app:titleTextAppearance="@style/Apple.ToolbarTitle" />
 
     <ScrollView
         android:layout_width="match_parent"
@@ -24,8 +26,17 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:paddingStart="16dp"
+            android:paddingTop="4dp"
             android:paddingEnd="16dp"
             android:paddingBottom="28dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:layout_marginBottom="8dp"
+                android:text="账号"
+                android:textAppearance="@style/Apple.SectionHeader" />
 
             <com.google.android.material.card.MaterialCardView
                 style="@style/AppTheme.Card"
@@ -41,15 +52,60 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="运行参数"
-                        android:textAppearance="?attr/textAppearanceLabelLarge"
-                        android:textColor="?attr/colorPrimary" />
+                        android:text="登录凭据"
+                        android:textColor="@color/apple_ink"
+                        android:textSize="17sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tv_login_state"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="未登录"
+                        android:textAppearance="@style/Apple.Footnote" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btn_login_cookie"
+                        style="@style/Apple.Button"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:text="@string/settings_login_cookie" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="@string/settings_login_cookie_help"
+                        android:textAppearance="@style/Apple.Footnote" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:layout_marginTop="20dp"
+                android:layout_marginBottom="8dp"
+                android:text="网络"
+                android:textAppearance="@style/Apple.SectionHeader" />
+
+            <com.google.android.material.card.MaterialCardView
+                style="@style/AppTheme.Card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="18dp">
 
                     <com.google.android.material.textfield.TextInputLayout
                         style="@style/Widget.Material3.TextInputLayout.OutlinedBox.Dense"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
                         android:hint="监听端口（1024–65535）"
                         app:helperText="也可在主页点端口芯片修改">
 
@@ -65,65 +121,124 @@
                         android:id="@+id/cb_lan"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
+                        android:layout_marginTop="10dp"
                         android:text="@string/settings_lan" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:layout_marginTop="20dp"
+                android:layout_marginBottom="8dp"
+                android:text="常驻与保活"
+                android:textAppearance="@style/Apple.SectionHeader" />
+
+            <com.google.android.material.card.MaterialCardView
+                style="@style/AppTheme.Card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:paddingStart="18dp"
+                    android:paddingTop="10dp"
+                    android:paddingEnd="18dp"
+                    android:paddingBottom="14dp">
 
                     <com.google.android.material.materialswitch.MaterialSwitch
                         android:id="@+id/cb_autostart"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
                         android:text="@string/settings_autostart" />
 
                     <com.google.android.material.materialswitch.MaterialSwitch
                         android:id="@+id/cb_float"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
                         android:text="@string/settings_float" />
 
                     <com.google.android.material.materialswitch.MaterialSwitch
                         android:id="@+id/cb_wakelock"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
                         android:text="@string/settings_wakelock" />
 
                     <com.google.android.material.materialswitch.MaterialSwitch
                         android:id="@+id/cb_notify"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
                         android:text="@string/settings_notify" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btn_notify_settings"
+                        style="@style/Apple.Button.Tonal"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:text="@string/settings_notify_open" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:text="@string/settings_float_help"
+                        android:textAppearance="@style/Apple.Footnote" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="@string/settings_keepalive_help"
+                        android:textAppearance="@style/Apple.Footnote" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:layout_marginTop="20dp"
+                android:layout_marginBottom="8dp"
+                android:text="对话适配"
+                android:textAppearance="@style/Apple.SectionHeader" />
+
+            <com.google.android.material.card.MaterialCardView
+                style="@style/AppTheme.Card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:paddingStart="18dp"
+                    android:paddingTop="10dp"
+                    android:paddingEnd="18dp"
+                    android:paddingBottom="14dp">
 
                     <com.google.android.material.materialswitch.MaterialSwitch
                         android:id="@+id/cb_trim_system"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
                         android:text="@string/settings_trim_system" />
 
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="2dp"
-                        android:textSize="12sp"
-                        android:textColor="?android:attr/textColorSecondary"
-                        android:text="@string/settings_trim_system_help" />
+                        android:text="@string/settings_trim_system_help"
+                        android:textAppearance="@style/Apple.Footnote" />
 
                     <com.google.android.material.materialswitch.MaterialSwitch
                         android:id="@+id/cb_stream_thinking"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
+                        android:layout_marginTop="8dp"
                         android:text="@string/settings_stream_thinking" />
-
-                    <com.google.android.material.materialswitch.MaterialSwitch
-                        android:id="@+id/cb_drop_tool_protocol"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
-                        android:text="@string/settings_drop_tool_protocol" />
 
                     <com.google.android.material.materialswitch.MaterialSwitch
                         android:id="@+id/cb_only_last_user"
@@ -136,59 +251,18 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="2dp"
-                        android:textSize="12sp"
-                        android:textColor="?android:attr/textColorSecondary"
-                        android:text="@string/settings_notify_help" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btn_notify_settings"
-                        style="@style/Widget.Material3.Button.TonalButton"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:text="@string/settings_notify_open" />
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="2dp"
-                        android:textSize="12sp"
-                        android:textColor="?android:attr/textColorSecondary"
-                        android:text="@string/settings_float_help" />
+                        android:text="@string/settings_only_last_user_help"
+                        android:textAppearance="@style/Apple.Footnote" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
             <com.google.android.material.button.MaterialButton
-                android:id="@+id/btn_tool"
-                style="@style/Widget.Material3.Button.TonalButton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:text="@string/btn_tool_settings" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btn_selftest"
-                style="@style/Widget.Material3.Button.OutlinedButton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="@string/btn_selftest" />
-
-            <com.google.android.material.button.MaterialButton
                 android:id="@+id/btn_save"
+                style="@style/Apple.Button"
                 android:layout_width="match_parent"
                 android:layout_height="52dp"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="24dp"
                 android:text="保存" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:textSize="12sp"
-                android:lineSpacingExtra="4dp"
-                android:textColor="?android:attr/textColorSecondary"
-                android:text="@string/settings_keepalive_help" />
         </LinearLayout>
     </ScrollView>
 </LinearLayout>

@@ -9,8 +9,9 @@
         android:id="@+id/toolbar"
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
-        android:background="?attr/colorSurface"
+        android:background="@color/apple_parchment"
         app:navigationIcon="@drawable/ic_back"
+        app:titleTextAppearance="@style/Apple.ToolbarTitle"
         app:title="网关 API Key" />
 
     <ScrollView
@@ -32,7 +33,8 @@
                 android:textSize="12.5sp"
                 android:lineSpacingExtra="4dp"
                 android:textColor="?android:attr/textColorSecondary"
-                android:text="客户端请求头：Authorization: Bearer &lt;密钥&gt;（也接受 x-api-key）。留空列表=不校验，任意 API Key 均可。输入框留空点添加=自动生成随机密钥。" />
+                android:textAppearance="@style/Apple.Footnote"
+                android:text="默认密钥 123456（客户端填 Authorization: Bearer 123456，也接受 x-api-key）。列表留空=不校验；输入框留空点「添加」=自动生成随机密钥。" />
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -58,7 +60,7 @@
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btn_add"
-                    style="@style/Widget.Material3.Button.TonalButton"
+                    style="@style/Apple.Button.Tonal"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="10dp"

@@ -50,7 +50,7 @@ public final class GatewayServer {
     private final List<McpHub.Server> mcpServers = new ArrayList<>();
     private String mcpCfgSig = "\u0000";
     /** 构建标记：写进诊断文件，便于确认机上装的是哪一版。 */
-    public static final String BUILD_TAG = "v1.9.10+param-trim+reasoning";
+    public static final String BUILD_TAG = "v1.9.10+apple-ui+no-mcp+ask-schema+session-key+login-fullscreen";
 
     private AsyncHttpServer server;
     private volatile boolean running;
@@ -302,82 +302,169 @@ public final class GatewayServer {
         final String cookie = store.getCookie();
         final String model = openai.optString("model", "");
         final boolean stream = openai.optBoolean("stream", true);
-        // tools 决定"是否注入协议说明"；哨兵解析则常开（避免上游沿用旧指令时协议文本泄漏给客户端）
-        final boolean rawToolsDeclared = ToolShim.requestHasTools(openai);
-        // v1.9.10：默认丢弃 agent 侧携带的 tools（协议段每轮全量 schema 反复注入码道，
-        // 既非用户原话、又稀释对话）。只有 MCP 自动执行开着，或开关关闭时才走工具路径。
-        final boolean toolsDeclared = sDropToolProtocol ? false : rawToolsDeclared;
+        // 工具 / MCP 功能已移除：不再注入工具协议段，也不再进入工具执行路径。
+        final boolean toolsDeclared = false;
         final java.util.List<String> declaredNames = collectToolNames(openai);
+        // 提问工具规格（名字 + 参数形态），决定码道提问如何转成 tool_calls
+        final AskSpec askSpec = resolveAskSpec(openai, declaredNames);
 
-        // ---------------- A/B 路径：带 tools 或开了 MCP，且配置了「工具模式上游」 ----------------
-        // A：客户端声明的 tools 原样交给**原生支持 function calling** 的上游 → 真正产出 tool_calls；
-        // B：网关自动把任意第三方 MCP 的工具喂给模型，并自己执行工具、回灌结果。
-        // 这条路径不依赖 DevCloud 会话，所以放在 cookie 校验之前。
-        final String toolBase = store.getToolBase();
-        final boolean mcpOn = store.isMcpEnabled();
-        // 工具路径触发：请求带 tools，或 MCP 自动执行开着。
-        // 上游两种形态（v1.9.5）：
-        //   a) tool_base 配了外部 OpenAI 兼容服务（原生 function calling）→ ToolUpstream 直连；
-        //   b) tool_base 为空，或地址指向网关自身（self_loop）→ 内部模式：
-        //      用「码道 + ToolShim 垫片」当模型，MCP 工具由网关自己执行。零外部依赖。
-        final boolean wantToolPath = toolsDeclared || mcpOn;
-        if (wantToolPath) {
-            boolean external = ToolUpstream.configured(toolBase);
-            boolean selfLoop = false;
-            if (external) {
-                try {
-                    int upPort = new java.net.URL(toolBase).getPort();
-                    selfLoop = upPort == port;
-                } catch (Throwable ignore) {
-                    // 解析不了按外部处理，后续报错可见
-                }
-            }
-            if (external && !selfLoop) {
-                LogRing.log("req#" + n, (stream ? "stream" : "sync") + " 工具路径[外部] hasTools="
-                        + toolsDeclared + " mcp=" + mcpOn + " declared=" + declaredNames.size()
-                        + " up=" + toolBase);
-                handleToolPath(res, openai, model, stream, n, toolBase, mcpOn, declaredNames);
-                return;
-            }
-            // 内部模式需要码道会话（cookie）
-            if (cookie.isEmpty()) {
-                json(res, 401, ProtocolAdapter.error(
-                        "内部工具链路需要先登录 DevCloud（或把工具上游配成外部 function calling 服务）",
-                        "invalid_request_error", "no_cookie"));
-                return;
-            }
-            LogRing.log("req#" + n, (stream ? "stream" : "sync") + " 工具路径[内部"
-                    + (selfLoop ? "，self_loop 自动切换" : "") + "] hasTools="
-                    + toolsDeclared + " mcp=" + mcpOn + " declared=" + declaredNames.size());
-            handleInternalToolPath(res, openai, model, stream, n, cookie,
-                    toolsDeclared, mcpOn, declaredNames);
+        // （工具 / MCP 执行路径已移除：请求一律走下方普通对话路径）
+
+        // 标题生成请求（Claude Code / codex 等 agent 新建会话时先发一条，让模型概括标题）：
+        // 它不是用户对话。本地直接生成并返回，不转发码道，避免在码道多开一个对话。
+        final String rawQuery = openaiToQueryText(openai);
+        if (isTitleRequest(rawQuery)) {
+            String title = localSessionTitle(rawQuery);
+            LogRing.log("req#" + n, "标题生成请求 → 本地返回: " + title);
+            respondLocalTitle(res, model, title, stream);
             return;
         }
-
         if (cookie.isEmpty()) {
             json(res, 401, ProtocolAdapter.error(
                     "尚未登录 DevCloud：请先在 App 内登录并保存会话",
                     "invalid_request_error", "no_cookie"));
             return;
         }
-        String content = openaiToQueryText(openai);
+        String content = rawQuery;
         if (toolsDeclared) {
             content = content + "\n\n" + ToolShim.buildInstruction(openai);
+        }
+        final String sessionKey = sessionKey(req, openai);
+        // 客户端显式新建对话：废弃旧码道会话与待回灌提问，强制新建上游会话
+        if (openai.optBoolean("new_chat", false)) {
+            devCloudSessions.remove(sessionKey);
+            devCloudSessionFailed.remove(sessionKey);
+            sessions.remove(sessionKey);
+            pendingUpstreamQuestions.remove(sessionKey);
+        }
+        // 上一轮码道提问：本轮把「原提问 + 用户新回复」一起回灌，码道才知道按哪个选项继续
+        String pendingQ = pendingUpstreamQuestions.remove(sessionKey);
+        if (pendingQ != null && pendingQ.length() > 0 && !openai.optBoolean("new_chat", false)) {
+            content = buildPendingContext(pendingQ, content);
+            LogRing.log("req#" + n, "回灌上轮码道提问: " + DevCloudClient.trim(pendingQ, 120));
         }
         if (content.isEmpty()) {
             json(res, 400, ProtocolAdapter.error("messages 为空", "invalid_request_error", null));
             return;
         }
-        final String sessionKey = sessionKey(req, openai);
         LogRing.log("req#" + n, (stream ? "stream" : "sync") + " model="
                 + (model.isEmpty() ? "-" : model) + " session=" + sessionKey
                 + (toolsDeclared ? " tools=" + declaredNames.size() : "")
                 + " q=" + DevCloudClient.trim(content, 60));
         if (!stream) {
-            handleChatSync(res, cookie, content, model, sessionKey, n, toolsDeclared, declaredNames);
+            handleChatSync(res, cookie, content, model, sessionKey, n, toolsDeclared, declaredNames,
+                    askSpec);
             return;
         }
-        handleChatStream(res, cookie, content, model, sessionKey, n, toolsDeclared, declaredNames);
+        handleChatStream(res, cookie, content, model, sessionKey, n, toolsDeclared, declaredNames,
+                askSpec);
+    }
+
+    /** 是否为 agent 的会话标题生成请求（不是用户对话）。 */
+    static boolean isTitleRequest(String q) {
+        if (q == null) {
+            return false;
+        }
+        String t = q.trim().toLowerCase(java.util.Locale.ROOT);
+        if (t.isEmpty()) {
+            return false;
+        }
+        if (t.contains("generate the session title") && t.contains("json")) {
+            return true;
+        }
+        if (t.contains("session title") && t.contains("json array of human messages")) {
+            return true;
+        }
+        return t.contains("生成会话标题") || t.contains("生成对话标题");
+    }
+
+    /**
+     * 构造「上一轮提问 + 用户回复」的回灌上下文：只保留问题与选项文案，
+     * 不带 question_id/call_id/turn_id 等内部字段，避免啰嗦和重复提问。
+     */
+    static String buildPendingContext(String pendingJson, String userReply) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("[系统] 上一轮你向用户提问，用户已回复。请根据用户回复直接继续，")
+                .append("不要重复同样的提问。\n");
+        try {
+            JSONObject p = new JSONObject(pendingJson == null ? "{}" : pendingJson);
+            JSONArray qs = p.optJSONArray("questions");
+            if (qs != null && qs.length() > 0) {
+                sb.append("上一轮提问：\n");
+                for (int i = 0; i < qs.length(); i++) {
+                    JSONObject q = qs.optJSONObject(i);
+                    if (q == null) {
+                        continue;
+                    }
+                    sb.append(i + 1).append(") ").append(q.optString("question", "")).append('\n');
+                    JSONArray opts = q.optJSONArray("options");
+                    if (opts != null) {
+                        for (int j = 0; j < opts.length(); j++) {
+                            JSONObject o = opts.optJSONObject(j);
+                            if (o != null) {
+                                sb.append("   - ").append(o.optString("label", "")).append('\n');
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Throwable ignore) {
+            // 解析失败也要把用户回复带上
+        }
+        String reply = userReply == null ? "" : userReply.trim();
+        sb.append("用户回复：").append(reply.isEmpty() ? "（未提供）" : reply);
+        return sb.toString();
+    }
+
+    /** 从标题请求里提取第一条 human 文本作为标题（本地生成，不调上游）。 */
+    static String localSessionTitle(String q) {
+        String title = "";
+        try {
+            java.util.regex.Matcher m = java.util.regex.Pattern
+                    .compile("\"text\"\\s*:\\s*\"((?:\\\\.|[^\"\\\\])*)\"")
+                    .matcher(q == null ? "" : q);
+            if (m.find()) {
+                title = m.group(1)
+                        .replace("\\n", " ")
+                        .replace("\\\"", "\"")
+                        .replace("\\\\", "\\");
+            }
+        } catch (Throwable ignore) {
+            // 忽略
+        }
+        title = title.replaceAll("\\s+", " ").trim();
+        if (title.isEmpty() && q != null) {
+            title = q.replaceAll("\\s+", " ").trim();
+        }
+        if (title.isEmpty()) {
+            return "新对话";
+        }
+        if (title.length() > 40) {
+            title = title.substring(0, 40) + "…";
+        }
+        return title;
+    }
+
+    /** 本地返回标题（兼容流式/非流式），不经过 DevCloud，也不产生码道会话。 */
+    private void respondLocalTitle(AsyncHttpServerResponse res, String model,
+                                   String title, boolean stream) {
+        String id = ProtocolAdapter.newCompletionId();
+        if (!stream) {
+            json(res, 200, ProtocolAdapter.completion(id, model, title, null));
+            return;
+        }
+        com.koushikdutta.async.AsyncSocket sock = res.getSocket();
+        if (sock == null) {
+            json(res, 500, ProtocolAdapter.error("网关无法获取连接句柄", "internal_error", null));
+            return;
+        }
+        SseWriter sse = new SseWriter(sock);
+        sse.data(ProtocolAdapter.chunk(id, model,
+                "{\"role\":\"assistant\",\"content\":\"\"}", null));
+        sse.data(ProtocolAdapter.chunk(id, model, deltaJson(title), null));
+        sse.data(ProtocolAdapter.chunk(id, model, "{}", "stop"));
+        sse.data("[DONE]");
+        sse.close();
     }
 
     // ================================================================ 工具路径（A + B）
@@ -742,55 +829,76 @@ public final class GatewayServer {
      *       文件策略 / GUI URL / Time sampled… 这些全是环境状态，不是用户原话。</li>
      * </ul>
      * 这些内容与「用户说了什么」无关，整段拍进码道只会浪费 token、稀释指令，
-     * 并在多轮会话里反复累积。因此默认丢弃：
+     * 并在多轮会话里反复累积。因此默认只抽取<b>用户原始输入</b>：
      * <ul>
-     *   <li>整条 system 消息；</li>
-     *   <li>以「Current runtime context」开头的 user 消息（含 Time sampled 时间戳）；</li>
+     *   <li>system / developer 提示：整条丢弃（agent 的角色设定、工具说明、硬约束都不发）；</li>
+     *   <li>运行时快照 user 消息（Current runtime context / environment_context 等）：整条丢弃；</li>
+     *   <li>user 消息里夹带的 agent 注入块（&lt;system-reminder&gt; 等）：就地剥离；</li>
      * </ul>
-     * 只保留真正的 user 原话与 assistant 历史（assistant.tool_calls / role=tool 仍渲染
-     * 成工具协议文本，模型需要看见自己之前的调用与结果）。
+     * 只保留真正的 user 原话；关闭「每轮只发新消息」时才转发完整对话历史，
+     * 但依然过滤上述注入内容。
      */
     static String openaiToQueryText(JSONObject openai) {
         JSONArray messages = openai == null ? null : openai.optJSONArray("messages");
-        if (messages == null) {
+        if (messages == null || messages.length() == 0) {
             return "";
         }
-        // v1.9.10：默认只发最后一条用户原话（不转发之前轮次的历史，码道侧保持独立上下文）
+        // 默认：只抽取最后一条「用户原始输入」，其余全部视为 agent 注入内容丢弃。
         if (sOnlyLastUser) {
-            String lastUser = "";
-            for (int i = messages.length() - 1; i >= 0; i--) {
-                JSONObject m = messages.optJSONObject(i);
-                if (m == null) {
-                    continue;
-                }
-                String role = m.optString("role", "user");
-                if (!"user".equals(role)) {
-                    continue;
-                }
-                String text = ProtocolAdapter.flattenContent(m.opt("content"));
-                if (sTrimSystem && isRuntimeContextSnapshot(text)) {
-                    continue; // 跳过快照碎片
-                }
-                if (text.isEmpty()) {
-                    continue;
-                }
-                lastUser = text;
-                break;
-            }
-            return lastUser;
+            return rawUserInput(messages);
         }
-        // 旧行为：转发完整历史（过滤 system 与快照）
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < messages.length(); i++) {
+        // 关闭开关：转发完整对话历史，但依然过滤 system/开发者提示与运行时快照。
+        return renderRange(messages, 0, messages.length());
+    }
+
+    /**
+     * 只抽取最后一条真正的<b>用户原始输入</b>，兼容 codex / Claude Code / DSH 等 agent：
+     * 它们会在 user 消息里夹带运行时快照、{@code <system-reminder>}、{@code <environment_context>}
+     * 等注入内容，这里逐层剥离；剥离后为空的整条跳过，继续往前找真正的用户原话。
+     */
+    private static String rawUserInput(JSONArray messages) {
+        for (int i = messages.length() - 1; i >= 0; i--) {
             JSONObject m = messages.optJSONObject(i);
             if (m == null) {
                 continue;
             }
-            String role = m.optString("role", "user");
+            if (!"user".equals(normalizeRole(m.optString("role", "user")))) {
+                continue;
+            }
             String text = ProtocolAdapter.flattenContent(m.opt("content"));
             if (sTrimSystem) {
-                if ("system".equals(role)) {
-                    continue;
+                text = stripAgentWrappers(text); // 先剥离 agent 注入的包装块
+                if (isRuntimeContextSnapshot(text)) {
+                    continue; // 纯运行时快照：整条跳过
+                }
+            }
+            if (text.trim().isEmpty()) {
+                continue; // 注入内容被剥空 / 纯图片无文本，继续往前找
+            }
+            return text.trim();
+        }
+        return fallbackQueryText(messages);
+    }
+
+    /**
+     * 完整历史模式：过滤 system / 开发者提示、运行时快照与 agent 包装，保留真实对话轮次。
+     */
+    private static String renderRange(JSONArray messages, int from, int to) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = from; i < to; i++) {
+            JSONObject m = messages.optJSONObject(i);
+            if (m == null) {
+                continue;
+            }
+            String role = normalizeRole(m.optString("role", "user"));
+            String text = ProtocolAdapter.flattenContent(m.opt("content"));
+            boolean isSystem = "system".equals(role);
+            if (sTrimSystem && isSystem) {
+                continue; // 丢弃所有 system / developer 提示
+            }
+            if (sTrimSystem) {
+                if ("user".equals(role)) {
+                    text = stripAgentWrappers(text);
                 }
                 if (isRuntimeContextSnapshot(text)) {
                     continue;
@@ -808,9 +916,7 @@ public final class GatewayServer {
             if (sb.length() > 0) {
                 sb.append("\n\n");
             }
-            if ("system".equals(role)) {
-                sb.append("[系统] ").append(text);
-            } else if ("assistant".equals(role)) {
+            if ("assistant".equals(role)) {
                 if (!text.isEmpty()) {
                     sb.append("[助手] ").append(text);
                 }
@@ -828,6 +934,68 @@ public final class GatewayServer {
     }
 
     /**
+     * 没有可用 user 消息时的兜底：取最后一条非 system 的非空内容（含 assistant.tool_calls），
+     * 避免 agent 只回传工具结果、或客户端只发 assistant 消息时直接 400。
+     */
+    private static String fallbackQueryText(JSONArray messages) {
+        for (int i = messages.length() - 1; i >= 0; i--) {
+            JSONObject m = messages.optJSONObject(i);
+            if (m == null) {
+                continue;
+            }
+            String role = normalizeRole(m.optString("role", "user"));
+            if ("system".equals(role)) {
+                continue;
+            }
+            String text = ProtocolAdapter.flattenContent(m.opt("content"));
+            if (sTrimSystem) {
+                text = stripAgentWrappers(text);
+            }
+            if (!text.trim().isEmpty() && !isRuntimeContextSnapshot(text)) {
+                return text.trim();
+            }
+            String calls = "assistant".equals(role)
+                    ? ToolShim.renderAssistantToolCalls(m.optJSONArray("tool_calls")) : "";
+            if (!calls.isEmpty()) {
+                return calls;
+            }
+        }
+        return "";
+    }
+
+    /** OpenAI 新版用 developer 代替 system，统一按 system 处理。 */
+    private static String normalizeRole(String role) {
+        return "developer".equals(role) ? "system" : role;
+    }
+
+    /**
+     * 剥离 codex / Claude Code / DSH 等 agent 在 user 消息里夹带的注入块，只留人类输入。
+     * 覆盖：
+     * <ul>
+     *   <li>成对注入块整体删除：{@code <system-reminder>}、{@code <environment_context>}、
+     *       {@code <runtime_context>}、{@code <local-command-stdout>}、{@code <command-*>}；</li>
+     *   <li>包裹用户原话的标签本身去掉，保留标签内文本：
+     *       {@code <user_query>} / {@code <user_input>} / {@code <human>} / {@code <prompt>}。</li>
+     * </ul>
+     */
+    static String stripAgentWrappers(String text) {
+        if (text == null || text.isEmpty()) {
+            return "";
+        }
+        String t = text;
+        t = t.replaceAll("(?is)<system-reminder>.*?</system-reminder>", " ");
+        t = t.replaceAll("(?is)<environment_context>.*?</environment_context>", " ");
+        t = t.replaceAll("(?is)<runtime_context>.*?</runtime_context>", " ");
+        t = t.replaceAll("(?is)<local-command-stdout>.*?</local-command-stdout>", " ");
+        t = t.replaceAll("(?is)<local-command-caveat>.*?</local-command-caveat>", " ");
+        t = t.replaceAll("(?is)<command-name>.*?</command-name>", " ");
+        t = t.replaceAll("(?is)<command-message>.*?</command-message>", " ");
+        t = t.replaceAll("(?is)<command-args>.*?</command-args>", " ");
+        t = t.replaceAll("(?is)</?(user_query|user_input|user_message|human|prompt|query)>", " ");
+        return t.trim();
+    }
+
+    /**
      * 判断 user 消息是否为 agent 运行时上下文快照（DSH 的「Current runtime context.
      * This snapshot supersedes earlier runtime-context snapshots.」+ 工作目录 / 时区 /
      * Time sampled 等环境信息），而非用户原话。
@@ -839,13 +1007,31 @@ public final class GatewayServer {
         String t = text.trim();
         // 快照头：完整快照消息以固定文案开头；碎片快照（被上游折叠/截断后）
         // 通常只剩 "Time sampled while preparing turn" + "Browser time zone" 两行。
-        if (t.startsWith("Current runtime context")
-                || (t.contains("Time sampled") && t.contains("Browser time zone"))) {
+        // 兼容 DSH / Codex / Cursor / 中文 agent 等不同标记。
+        String head = t.length() > 80 ? t.substring(0, 80).toLowerCase() : t.toLowerCase();
+        if (head.startsWith("current runtime context")
+                || head.startsWith("<environment_context>")
+                || head.startsWith("<runtime_context>")
+                || head.startsWith("<environment>")
+                || head.startsWith("运行时上下文")
+                || head.startsWith("当前运行时上下文")
+                || head.startsWith("环境上下文")) {
             return true;
         }
-        // 超大环境块：>4KB 且带 DSH 环境特征（工作目录 / 浏览器时区 / DSH 策略）
+        if (t.contains("Time sampled") && t.contains("Browser time zone")) {
+            return true;
+        }
+        // 中文/紧凑快照：工作目录 + 时区，且带时间采样或环境块特征
+        if (t.contains("工作目录")
+                && (t.contains("时区") || t.contains("Time zone"))
+                && (t.contains("Current time") || t.contains("当前时间")
+                || t.contains("Time sampled") || t.contains("时间采样"))) {
+            return true;
+        }
+        // 超大环境块：>4KB 且带 agent 环境特征（工作目录 / 浏览器时区 / 策略）
         if (t.length() > 4000
-                && (t.contains("Current working directory") || t.contains("Browser time zone"))) {
+                && (t.contains("Current working directory") || t.contains("工作目录")
+                || t.contains("Browser time zone") || t.contains("浏览器时区"))) {
             return true;
         }
         return false;
@@ -1130,9 +1316,9 @@ public final class GatewayServer {
             // 只在首轮回灌一次，回灌后清掉（避免下轮重复带旧提问）
             String pendingQ = pendingUpstreamQuestions.remove(sessionKey);
             if (pendingQ != null && pendingQ.length() > 0 && !openai.optBoolean("new_chat", false)) {
-                query.append("\n[系统] 上一轮你向用户提问后，用户已回复。上一轮你的提问（原文 JSON）：\n")
-                        .append(pendingQ)
-                        .append("\n用户的新回复是：");
+                String userMsg = query.toString();
+                query.setLength(0);
+                query.append(buildPendingContext(pendingQ, userMsg));
                 LogRing.log("req#" + n, "回灌上轮码道提问: " + DevCloudClient.trim(pendingQ, 120));
             }
             while (rounds <= maxRounds) {
@@ -1375,19 +1561,17 @@ public final class GatewayServer {
      * 可见 content 帧（带 [码道提问] 前缀），agent 能看见并回复，避免干等卡死。
      *
      * @param queryAppend 回灌用的 query（可为 null，仅流式转发）
+     * @return 提问 JSON 文本；非提问事件返回 null
      */
-    private void forwardUpstreamQuestion(String eventName, JSONObject raw,
-                                         SseWriter sse, String model, long n,
-                                         StringBuilder queryAppend,
-                                         String sessionKey, boolean stream) {
+    private String forwardUpstreamQuestion(String eventName, JSONObject raw,
+                                           SseWriter sse, String model, long n,
+                                           StringBuilder queryAppend,
+                                           String sessionKey, boolean stream) {
         if (raw == null || eventName == null) {
-            return;
+            return null;
         }
-        String low = eventName.toLowerCase();
-        boolean isAsk = low.contains("ask") || low.contains("confirm")
-                || low.contains("question") || low.contains("clarif");
-        if (!isAsk) {
-            return;
+        if (!isAskEvent(eventName)) {
+            return null;
         }
         String q = raw.toString(); // 完整提问 JSON（含 question_id / options）原样带给客户端与下一轮回灌
         LogRing.log("req#" + n, "上游提问事件 " + eventName + " → 转发给客户端: "
@@ -1402,6 +1586,234 @@ public final class GatewayServer {
         }
         if (queryAppend != null) {
             queryAppend.append("\n[码道提问] ").append(q);
+        }
+        return q;
+    }
+
+    /** 上游事件是否为提问/确认类。 */
+    private static boolean isAskEvent(String eventName) {
+        if (eventName == null) {
+            return false;
+        }
+        String low = eventName.toLowerCase();
+        return low.contains("ask") || low.contains("confirm")
+                || low.contains("question") || low.contains("clarif");
+    }
+
+    /**
+     * 从客户端声明的 tools 里找「提问类工具」名。命中后即可把码道提问转成标准
+     * tool_calls，让 Claude Code / codex / DSH 等 agent 弹出交互式选项，
+     * 而不是只看到一段 {@code [码道提问]} 文本。
+     */
+    static String findAskToolName(java.util.List<String> declared) {
+        if (declared == null || declared.isEmpty()) {
+            return null;
+        }
+        String[] common = {"AskUserQuestion", "ask_user_question", "ask_user",
+                "request_user_input", "ask_question", "AskUserQuestionTool"};
+        for (String c : common) {
+            for (String d : declared) {
+                if (c.equalsIgnoreCase(d)) {
+                    return d;
+                }
+            }
+        }
+        for (String d : declared) {
+            if (d == null) {
+                continue;
+            }
+            String l = d.toLowerCase();
+            if (l.contains("ask") || l.contains("question")) {
+                return d;
+            }
+        }
+        return null;
+    }
+
+    /** 提问工具规格：工具名 + arguments 形态 + schema 要求的必填 id 字段。 */
+    static final class AskSpec {
+        final String name;
+        final boolean arrayStyle;
+        final boolean needsQuestionId;
+        final boolean needsOptionId;
+
+        AskSpec(String name, boolean arrayStyle, boolean needsQuestionId, boolean needsOptionId) {
+            this.name = name;
+            this.arrayStyle = arrayStyle;
+            this.needsQuestionId = needsQuestionId;
+            this.needsOptionId = needsOptionId;
+        }
+    }
+
+    /**
+     * 依据客户端 tools 里的 schema 决定提问参数形态与必填字段：
+     * Claude Code 的 AskUserQuestion 用 {@code {questions:[{question,header,options}]}}；
+     * DSH 同为数组式但要求每项带 {@code id}（否则报 missing required property
+     * {@code "questions[0].id"}）。
+     */
+    static AskSpec resolveAskSpec(JSONObject openai, java.util.List<String> declared) {
+        String name = findAskToolName(declared);
+        if (name == null) {
+            return null;
+        }
+        boolean claude = name.toLowerCase(java.util.Locale.ROOT).contains("askuserquestion");
+        boolean arrayStyle = claude;
+        boolean needsQuestionId = false;
+        boolean needsOptionId = false;
+        boolean schemaKnown = false;
+        try {
+            JSONArray tools = openai == null ? null : openai.optJSONArray("tools");
+            if (tools != null) {
+                for (int i = 0; i < tools.length(); i++) {
+                    JSONObject t = tools.optJSONObject(i);
+                    if (t == null) {
+                        continue;
+                    }
+                    JSONObject f = t.optJSONObject("function");
+                    String n = f != null ? f.optString("name", "") : t.optString("name", "");
+                    if (!name.equals(n)) {
+                        continue;
+                    }
+                    JSONObject params = f != null ? f.optJSONObject("parameters")
+                            : t.optJSONObject("input_schema");
+                    JSONObject props = params == null ? null : params.optJSONObject("properties");
+                    if (props != null) {
+                        arrayStyle = props.has("questions");
+                        JSONObject qProp = props.optJSONObject("questions");
+                        JSONObject items = qProp == null ? null : qProp.optJSONObject("items");
+                        if (items != null) {
+                            schemaKnown = true;
+                            needsQuestionId = requiredContains(items, "id");
+                            JSONObject innerProps = items.optJSONObject("properties");
+                            JSONObject optProp = innerProps == null ? null
+                                    : innerProps.optJSONObject("options");
+                            JSONObject optItems = optProp == null ? null
+                                    : optProp.optJSONObject("items");
+                            if (optItems != null) {
+                                needsOptionId = requiredContains(optItems, "id");
+                            }
+                        }
+                    }
+                    break;
+                }
+            }
+        } catch (Throwable ignore) {
+            // 解析失败用名字兜底
+        }
+        // schema 不可见时：非 Claude 的数组式提问工具按 DSH 约定补 id
+        if (!schemaKnown && !claude && arrayStyle) {
+            needsQuestionId = true;
+        }
+        return new AskSpec(name, arrayStyle, needsQuestionId, needsOptionId);
+    }
+
+    /** schema 的 required 数组是否包含某字段。 */
+    private static boolean requiredContains(JSONObject schema, String field) {
+        JSONArray req = schema == null ? null : schema.optJSONArray("required");
+        if (req == null) {
+            return false;
+        }
+        for (int i = 0; i < req.length(); i++) {
+            if (field.equals(req.optString(i))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 旧重载：默认数组式（Claude Code 形态）。 */
+    static String buildAskArguments(JSONObject raw) {
+        return buildAskArguments(null, raw);
+    }
+
+    /** 按工具 schema 形态构造提问 arguments。 */
+    static String buildAskArguments(AskSpec spec, JSONObject raw) {
+        JSONArray qs = extractQuestions(raw);
+        try {
+            JSONObject args = new JSONObject();
+            if (spec == null || spec.arrayStyle) {
+                if (spec != null && (spec.needsQuestionId || spec.needsOptionId)) {
+                    ensureIds(qs, spec.needsQuestionId, spec.needsOptionId);
+                }
+                args.put("questions", qs);
+                return args.toString();
+            }
+            // 单问形态：取第一问的 question/header/options/multiple
+            JSONObject q0 = qs.optJSONObject(0);
+            if (q0 == null) {
+                args.put("question", "");
+                return args.toString();
+            }
+            args.put("question", q0.optString("question", ""));
+            if (q0.has("header")) {
+                args.put("header", q0.optString("header", ""));
+            }
+            if (q0.has("options")) {
+                args.put("options", q0.optJSONArray("options"));
+            }
+            args.put("multiple", q0.optBoolean("multiple", false));
+            return args.toString();
+        } catch (Throwable t) {
+            return spec == null || spec.arrayStyle ? "{\"questions\":[]}" : "{\"question\":\"\"}";
+        }
+    }
+
+    /** 统一取出 questions 数组；单问形态则包成一条。 */
+    private static JSONArray extractQuestions(JSONObject raw) {
+        JSONArray qs = raw == null ? null : raw.optJSONArray("questions");
+        if (qs != null && qs.length() > 0) {
+            return qs;
+        }
+        try {
+            JSONObject q = new JSONObject();
+            String text = raw == null ? "" : raw.optString("question",
+                    raw.optString("prompt", raw.optString("text", raw.optString("message", ""))));
+            q.put("question", text);
+            if (raw != null && raw.has("header")) {
+                q.put("header", raw.optString("header", ""));
+            }
+            if (raw != null && raw.has("options")) {
+                q.put("options", raw.optJSONArray("options"));
+            }
+            if (raw != null && raw.has("multiple")) {
+                q.put("multiple", raw.optBoolean("multiple", false));
+            }
+            JSONArray arr = new JSONArray();
+            arr.put(q);
+            return arr;
+        } catch (Throwable t) {
+            return new JSONArray();
+        }
+    }
+
+    /** 按 schema 要求补齐 questions[i].id / options[j].id（DSH 等工具会严格校验）。 */
+    private static void ensureIds(JSONArray qs, boolean questionId, boolean optionId) {
+        if (qs == null) {
+            return;
+        }
+        try {
+            for (int i = 0; i < qs.length(); i++) {
+                JSONObject q = qs.optJSONObject(i);
+                if (q == null) {
+                    continue;
+                }
+                if (questionId && q.optString("id", "").isEmpty()) {
+                    q.put("id", "q" + (i + 1));
+                }
+                if (optionId) {
+                    JSONArray opts = q.optJSONArray("options");
+                    if (opts != null) {
+                        for (int j = 0; j < opts.length(); j++) {
+                            JSONObject o = opts.optJSONObject(j);
+                            if (o != null && o.optString("id", "").isEmpty()) {
+                                o.put("id", "q" + (i + 1) + "o" + (j + 1));
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Throwable ignore) {
+            // 补 id 失败不影响主流程（交由客户端校验兜底）
         }
     }
 
@@ -1456,10 +1868,14 @@ public final class GatewayServer {
      */
     private void handleChatSync(AsyncHttpServerResponse res, String cookie, String content,
                                 String model, String sessionKey, long n, boolean toolsDeclared,
-                                java.util.List<String> declaredNames) {
+                                java.util.List<String> declaredNames, AskSpec askSpec) {
         final StringBuilder answer = new StringBuilder();
         final StringBuilder thinking = new StringBuilder();
         final JSONObject trace = new JSONObject();
+        // v1.9.10：非流式路径无法分帧，码道提问先累积，onDone 时拼进响应正文
+        final StringBuilder question = new StringBuilder();
+        final java.util.List<ToolShim.Call> askCalls = new java.util.ArrayList<>();
+        final boolean[] finished = {false};
         final long t0 = System.currentTimeMillis();
         try {
             trace.put("ts", new java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.ROOT)
@@ -1487,11 +1903,39 @@ public final class GatewayServer {
 
                 @Override
                 public void onEvent(String eventName, JSONObject raw) {
-                    // 聚合模式不需要事件明细
+                    // 有提问类工具 → 转成标准 tool_calls；否则回退为正文文本
+                    if (askSpec != null && isAskEvent(eventName) && raw != null) {
+                        String args = buildAskArguments(askSpec, raw);
+                        askCalls.add(new ToolShim.Call(
+                                raw.optString("call_id", ToolShim.newCallId()),
+                                askSpec.name, args));
+                        if (sessionKey != null) {
+                            pendingUpstreamQuestions.put(sessionKey, raw.toString());
+                        }
+                        LogRing.log("req#" + n, "码道提问 → tool_calls(sync): " + askSpec.name
+                                + " args=" + DevCloudClient.trim(args, 160));
+                        // 非流式：码道提问后同样不会主动结束，立即返回完整报文
+                        finished[0] = true;
+                        json(res, 200, ToolShim.completion(
+                                ProtocolAdapter.newCompletionId(), model, "",
+                                new java.util.ArrayList<>(askCalls),
+                                thinking.length() > 0 ? thinking.toString() : null));
+                        return;
+                    }
+                    String q = forwardUpstreamQuestion(eventName, raw, null, model, n, null,
+                            sessionKey, false);
+                    if (q != null) {
+                        question.append("\n\n[码道提问] ").append(q)
+                                .append("\n（请在你的下一条回复中直接给出答案，码道会据此继续）\n");
+                    }
                 }
 
                 @Override
                 public void onDone(boolean ok, String error) {
+                    if (finished[0]) {
+                        LogRing.log("req#" + n, "提问已响应(sync)，忽略上游后续 onDone");
+                        return;
+                    }
                     try {
                         trace.put("upstreamText", DevCloudClient.trim(answer.toString(), 4000));
                         trace.put("thinkingLen", thinking.length());
@@ -1510,20 +1954,24 @@ public final class GatewayServer {
                     }
                     String id = ProtocolAdapter.newCompletionId();
                     ToolShim.Parsed p = ToolShim.parse(answer.toString(), declaredNames);
+                    java.util.List<ToolShim.Call> allCalls = new java.util.ArrayList<>(p.calls);
+                    allCalls.addAll(askCalls);
                     try {
                         JSONArray cs = new JSONArray();
-                        for (ToolShim.Call c : p.calls) {
+                        for (ToolShim.Call c : allCalls) {
                             cs.put(c.name + " " + c.arguments);
                         }
                         trace.put("toolCalls", cs);
-                        trace.put("finish", p.calls.isEmpty() ? "stop" : "tool_calls");
+                        trace.put("finish", allCalls.isEmpty() ? "stop" : "tool_calls");
                     } catch (Throwable ignore) {
                         // 忽略
                     }
                     recordTrace(trace);
                     LogRing.log("req#" + n, "工具垫片(sync)：文本 " + p.content.length()
-                            + " 字，调用 " + p.calls.size() + " 个，思考 " + thinking.length() + " 字");
-                    json(res, 200, ToolShim.completion(id, model, p.content, p.calls,
+                            + " 字，调用 " + allCalls.size() + " 个，思考 " + thinking.length() + " 字");
+                    String outContent = question.length() > 0
+                            ? p.content + question.toString() : p.content;
+                    json(res, 200, ToolShim.completion(id, model, outContent, allCalls,
                             thinking.length() > 0 ? thinking.toString() : null));
                     LogRing.log("req#" + n, "DevCloud 完成(sync)，输出 " + answer.length() + " 字");
                 }
@@ -1542,7 +1990,7 @@ public final class GatewayServer {
 
     private void handleChatStream(AsyncHttpServerResponse res, String cookie, String content,
                                   String model, String sessionKey, long n, boolean toolsDeclared,
-                                  java.util.List<String> declaredNames) {
+                                  java.util.List<String> declaredNames, AskSpec askSpec) {
         final com.koushikdutta.async.AsyncSocket sock = res.getSocket();
         if (sock == null) {
             json(res, 500, ProtocolAdapter.error("网关无法获取连接句柄", "internal_error", null));
@@ -1554,6 +2002,10 @@ public final class GatewayServer {
         final StringBuilder thinking = new StringBuilder();
         final JSONObject trace = new JSONObject();
         final long t0 = System.currentTimeMillis();
+        final boolean[] askSent = {false};
+        // 提问转 tool_calls 后立即收尾：码道停在提问处不会主动结束流，
+        // 必须由网关补 finish_reason + [DONE] 并关闭 SSE，agent 才会弹提问界面。
+        final boolean[] ended = {false};
         final java.util.Set<String> seenEvents =
                 java.util.Collections.synchronizedSet(new java.util.HashSet<String>());
         final Map<String, Integer> eventCounts = new java.util.concurrent.ConcurrentHashMap<>();
@@ -1608,6 +2060,9 @@ public final class GatewayServer {
 
                 @Override
                 public void onDelta(String text) {
+                    if (ended[0]) {
+                        return;
+                    }
                     String out = shim.feed(text);
                     if (out != null && !out.isEmpty()) {
                         answer.append(out);
@@ -1618,6 +2073,9 @@ public final class GatewayServer {
 
                 @Override
                 public void onThinking(String text) {
+                    if (ended[0]) {
+                        return;
+                    }
                     // 思考型模型可能把调用块写进 reasoning_content，这里同样走哨兵解析
                     if (thinkingShim == null) {
                         thinkingShim = new ToolShim.Stream(declaredNames);
@@ -1635,19 +2093,52 @@ public final class GatewayServer {
 
                 @Override
                 public void onEvent(String eventName, JSONObject raw) {
+                    if (ended[0]) {
+                        return;
+                    }
                     noteEvent(eventName, raw, n, seenEvents, eventCounts);
-                    // v1.9.10：码道提问/确认类事件转发为可见 content 帧，避免 agent 干等
-                    forwardUpstreamQuestion(eventName, raw, sse, model, n, null, null, true);
+                    // 有提问类工具时，把码道提问转成标准 tool_calls，agent 才会弹出交互式选项；
+                    // 没有对应工具则回退为可见文本（[码道提问] ...）
+                    if (askSpec != null && isAskEvent(eventName) && raw != null) {
+                        String args = buildAskArguments(askSpec, raw);
+                        int idx = 900; // 避开 ToolShim 从 0 起的索引
+                        sse.data(ToolShim.toolCallStartChunk(id, model, idx,
+                                new ToolShim.Call(
+                                        raw.optString("call_id", ToolShim.newCallId()),
+                                        askSpec.name, args)));
+                        sse.data(ToolShim.toolCallArgsChunk(id, model, idx, args));
+                        askSent[0] = true;
+                        if (sessionKey != null) {
+                            pendingUpstreamQuestions.put(sessionKey, raw.toString());
+                        }
+                        LogRing.log("req#" + n, "码道提问 → tool_calls: " + askSpec.name
+                                + " args=" + DevCloudClient.trim(args, 160));
+                        // 立即收尾：码道停在提问处不会主动结束流，若等 onDone，
+                        // agent 只会显示占位（"提问"），直到手动终止连接才渲染界面。
+                        ended[0] = true;
+                        sse.data(ProtocolAdapter.chunk(id, model, "{}", "tool_calls"));
+                        sse.data("[DONE]");
+                        sse.close();
+                        return;
+                    }
+                    forwardUpstreamQuestion(eventName, raw, sse, model, n, null, sessionKey, true);
                 }
 
                 @Override
                 public void heartbeat() {
+                    if (ended[0]) {
+                        return;
+                    }
                     // 上游心跳 → SSE 注释行 keep-alive：第三方 App 不会误判连接超时（v1.9.9）
                     sse.comment("keep-alive");
                 }
 
                 @Override
                 public void onDone(boolean ok, String error) {
+                    if (ended[0]) {
+                        LogRing.log("req#" + n, "提问已收尾，忽略上游后续 onDone");
+                        return;
+                    }
                     String tail = shim.flush();
                     if (tail != null && !tail.isEmpty()) {
                         answer.append(tail);
@@ -1667,7 +2158,7 @@ public final class GatewayServer {
                         sse.data(ProtocolAdapter.error(error, "upstream_error", null));
                     }
                     // 有工具调用时以 tool_calls 收尾，客户端据此进入"执行工具"分支
-                    sse.data(ProtocolAdapter.chunk(id, model, "{}", callsSent > 0 ? "tool_calls" : "stop"));
+                    sse.data(ProtocolAdapter.chunk(id, model, "{}", (callsSent > 0 || askSent[0]) ? "tool_calls" : "stop"));
                     sse.data("[DONE]");
                     sse.close();
                     try {
@@ -1680,7 +2171,7 @@ public final class GatewayServer {
                             cs.put("call#" + i);
                         }
                         trace.put("toolCallCount", callsSent);
-                        trace.put("finish", callsSent > 0 ? "tool_calls" : "stop");
+                        trace.put("finish", (callsSent > 0 || askSent[0]) ? "tool_calls" : "stop");
                         trace.put("events", new JSONObject(eventCounts));
                         if (error != null) {
                             trace.put("error", error);
@@ -1820,31 +2311,48 @@ public final class GatewayServer {
         }
     }
 
-    /** 会话键：优先 X-Session-Id 头，其次 body.user，最后 default。 */
+    /**
+     * 会话键：优先显式会话级标识（header / body / metadata），
+     * 最后按「模型 + 用户 + 首条消息」派生。
+     *
+     * <p>注意：{@code body.user} 是「终端用户」而不是「会话」，不能单独当 key，
+     * 否则同一用户新建的所有对话都会复用同一个码道会话（表现为新对话串到旧对话）。
+     */
     private static String sessionKey(AsyncHttpServerRequest req, JSONObject openai) {
-        // req 可能为 null（内部工具路径没有 HTTP 请求对象，v1.9.5 NPE 修复）
+        // 1) 会话级 header（req 可能为 null：内部工具路径没有 HTTP 请求对象）
         if (req != null) {
-            String s = req.getHeaders().get("X-Session-Id");
-            if (s != null && !s.trim().isEmpty()) {
-                return s.trim();
+            for (String h : new String[]{"X-Session-Id", "X-Conversation-Id",
+                    "X-Chat-Id", "X-Thread-Id"}) {
+                String s = req.getHeaders().get(h);
+                if (s != null && !s.trim().isEmpty()) {
+                    return s.trim();
+                }
             }
         }
-        String u = openai.optString("user", "");
-        if (!u.trim().isEmpty()) {
-            return u.trim();
+        // 2) body 里的会话级字段（不同 agent 命名不一）
+        for (String k : new String[]{"conversation_id", "conversationId", "session_id",
+                "sessionId", "chat_id", "chatId", "thread_id", "threadId", "prompt_cache_key"}) {
+            String v = openai.optString(k, "");
+            if (!v.trim().isEmpty()) {
+                return v.trim();
+            }
         }
-        String conv = openai.optString("session_id", "");
-        if (!conv.trim().isEmpty()) {
-            return conv.trim();
+        // 3) metadata 里的会话 id
+        JSONObject meta = openai.optJSONObject("metadata");
+        if (meta != null) {
+            for (String k : new String[]{"conversation_id", "session_id", "chat_id", "thread_id"}) {
+                String v = meta.optString(k, "");
+                if (!v.trim().isEmpty()) {
+                    return v.trim();
+                }
+            }
         }
-        // v1.9.10：网关自己调码道做元任务（如会话标题生成）会带 X-CodeArts-Meta 头，
-        // 这类请求进独立上游会话，不占用真实对话的码道会话，避免标题请求串进对话
+        // 4) 网关自己调码道做元任务（如会话标题生成）走独立会话
         if (req != null && "1".equals(req.getHeaders().get("X-CodeArts-Meta"))) {
             return "meta:" + Integer.toHexString(openai.toString().hashCode());
         }
-        // v1.9.7 修复：没有显式会话标识时，按「模型 + 首条用户消息」派生，
-        // 避免所有对话共用一个 "default" 上游会话——坏掉的会话会污染所有对话，
-        // 且不同话题的历史互相串台（第三方 App 反复发"检测 MCP"就是这么滚起来的）。
+        // 5) 回退：模型 + 终端用户 + 首条用户消息，三者组合才能区分同一用户的不同对话
+        String u = openai.optString("user", "").trim();
         String firstUser = "";
         JSONArray messages = openai.optJSONArray("messages");
         if (messages != null) {
@@ -1857,6 +2365,7 @@ public final class GatewayServer {
             }
         }
         String seed = openai.optString("model", "") + "|"
+                + (u.isEmpty() ? "" : u + "|")
                 + DevCloudClient.trim(firstUser, 80);
         return "c" + Integer.toHexString(seed.hashCode());
     }

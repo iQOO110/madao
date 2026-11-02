@@ -3,7 +3,8 @@
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="?android:attr/colorBackground">
 
     <androidx.core.widget.NestedScrollView
         android:layout_width="match_parent"
@@ -14,16 +15,37 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:paddingTop="12dp"
             android:paddingStart="16dp"
+            android:paddingTop="18dp"
             android:paddingEnd="16dp"
             android:paddingBottom="28dp">
 
-            <!-- 运行状态 -->
+            <!-- header：品牌标题 + 运行状态副标题 -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:text="CodeArts 网关"
+                android:textColor="@color/apple_ink"
+                android:textSize="28sp"
+                android:textStyle="bold"
+                android:letterSpacing="-0.02" />
+
+            <TextView
+                android:id="@+id/tv_state"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:layout_marginTop="4dp"
+                android:text="@string/status_stopped"
+                android:textAppearance="@style/Apple.Footnote" />
+
+            <!-- 状态卡 -->
             <com.google.android.material.card.MaterialCardView
                 style="@style/AppTheme.Card"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content">
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -44,12 +66,13 @@
                             android:background="@drawable/bg_dot" />
 
                         <TextView
-                            android:id="@+id/tv_state"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginStart="10dp"
-                            android:text="@string/status_stopped"
-                            android:textAppearance="?attr/textAppearanceTitleMedium" />
+                            android:text="运行状态"
+                            android:textColor="@color/apple_ink"
+                            android:textSize="17sp"
+                            android:textStyle="bold" />
 
                         <Space
                             android:layout_width="0dp"
@@ -71,14 +94,14 @@
                         android:id="@+id/tv_detail"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
-                        android:lineSpacingExtra="5dp"
+                        android:layout_marginTop="10dp"
+                        android:lineSpacingExtra="4dp"
                         android:textSize="13sp"
-                        android:textColor="?android:attr/textColorSecondary" />
+                        android:textColor="@color/apple_muted" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- 接入地址 -->
+            <!-- 接入地址卡 -->
             <com.google.android.material.card.MaterialCardView
                 style="@style/AppTheme.Card"
                 android:layout_width="match_parent"
@@ -94,16 +117,17 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="客户端接入地址"
-                        android:textAppearance="?attr/textAppearanceLabelLarge"
-                        android:textColor="?attr/colorPrimary" />
+                        android:text="客户端接入"
+                        android:textColor="@color/apple_ink"
+                        android:textSize="17sp"
+                        android:textStyle="bold" />
 
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:orientation="horizontal"
                         android:gravity="center_vertical"
-                        android:layout_marginTop="6dp">
+                        android:layout_marginTop="8dp">
 
                         <TextView
                             android:id="@+id/tv_base"
@@ -112,11 +136,12 @@
                             android:layout_weight="1"
                             android:fontFamily="monospace"
                             android:textSize="14sp"
+                            android:textColor="@color/apple_ink"
                             android:textIsSelectable="true" />
 
                         <com.google.android.material.button.MaterialButton
                             android:id="@+id/btn_copy"
-                            style="@style/Widget.Material3.Button.TonalButton"
+                            style="@style/Apple.Button.Tonal"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:minWidth="0dp"
@@ -130,115 +155,147 @@
                         android:layout_marginTop="10dp"
                         android:fontFamily="monospace"
                         android:textSize="12sp"
-                        android:textColor="?android:attr/textColorSecondary" />
+                        android:textColor="@color/apple_muted" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
             <!-- 主操作 -->
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btn_toggle"
+                style="@style/Apple.Button"
                 android:layout_width="match_parent"
                 android:layout_height="52dp"
                 android:layout_marginTop="16dp"
                 android:text="@string/btn_open_gateway" />
 
-            <LinearLayout
-                android:layout_width="match_parent"
+            <!-- 功能分组 -->
+            <TextView
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:layout_marginTop="10dp">
+                android:layout_marginStart="4dp"
+                android:layout_marginTop="20dp"
+                android:layout_marginBottom="8dp"
+                android:text="功能"
+                android:textAppearance="@style/Apple.SectionHeader" />
 
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btn_login"
-                    style="@style/Widget.Material3.Button.TonalButton"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
-                    android:layout_height="wrap_content"
-                    android:text="@string/btn_login" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btn_models"
-                    style="@style/Widget.Material3.Button.TonalButton"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="10dp"
-                    android:text="@string/btn_models" />
-            </LinearLayout>
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btn_checkin"
-                style="@style/Widget.Material3.Button.TonalButton"
+            <com.google.android.material.card.MaterialCardView
+                style="@style/AppTheme.Card"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:text="@string/btn_checkin" />
+                android:layout_height="wrap_content">
 
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btn_balance"
-                style="@style/Widget.Material3.Button.TonalButton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:text="@string/btn_balance" />
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:layout_marginTop="10dp">
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btn_diag"
-                    style="@style/Widget.Material3.Button.TonalButton"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="@string/btn_diag" />
+                    android:orientation="vertical"
+                    android:padding="10dp">
 
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btn_settings"
-                    style="@style/Widget.Material3.Button.TonalButton"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="10dp"
-                    android:text="@string/btn_settings" />
-            </LinearLayout>
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal">
 
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:layout_marginTop="10dp">
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btn_login"
+                            style="@style/Apple.Button.Tonal"
+                            android:layout_width="0dp"
+                            android:layout_weight="1"
+                            android:layout_height="wrap_content"
+                            android:text="@string/btn_login" />
 
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btn_keys"
-                    style="@style/Widget.Material3.Button.TonalButton"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
-                    android:layout_height="wrap_content"
-                    android:text="@string/btn_keys_short" />
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btn_models"
+                            style="@style/Apple.Button.Tonal"
+                            android:layout_width="0dp"
+                            android:layout_weight="1"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="8dp"
+                            android:text="@string/btn_models" />
+                    </LinearLayout>
 
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btn_battery"
-                    style="@style/Widget.Material3.Button.TonalButton"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="10dp"
-                    android:text="@string/btn_battery" />
-            </LinearLayout>
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:orientation="horizontal">
 
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btn_checkin"
+                            style="@style/Apple.Button.Tonal"
+                            android:layout_width="0dp"
+                            android:layout_weight="1"
+                            android:layout_height="wrap_content"
+                            android:text="@string/btn_checkin" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btn_balance"
+                            style="@style/Apple.Button.Tonal"
+                            android:layout_width="0dp"
+                            android:layout_weight="1"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="8dp"
+                            android:text="@string/btn_balance" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:orientation="horizontal">
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btn_diag"
+                            style="@style/Apple.Button.Tonal"
+                            android:layout_width="0dp"
+                            android:layout_weight="1"
+                            android:layout_height="wrap_content"
+                            android:text="@string/btn_diag" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btn_settings"
+                            style="@style/Apple.Button.Tonal"
+                            android:layout_width="0dp"
+                            android:layout_weight="1"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="8dp"
+                            android:text="@string/btn_settings" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:orientation="horizontal">
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btn_keys"
+                            style="@style/Apple.Button.Tonal"
+                            android:layout_width="0dp"
+                            android:layout_weight="1"
+                            android:layout_height="wrap_content"
+                            android:text="@string/btn_keys_short" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btn_battery"
+                            style="@style/Apple.Button.Tonal"
+                            android:layout_width="0dp"
+                            android:layout_weight="1"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="8dp"
+                            android:text="@string/btn_battery" />
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- 结果区 -->
             <TextView
                 android:id="@+id/tv_balance"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
+                android:layout_marginTop="14dp"
                 android:fontFamily="monospace"
                 android:textSize="12sp"
                 android:lineSpacingExtra="4dp"
-                android:textColor="?android:attr/textColorSecondary" />
+                android:textColor="@color/apple_muted" />
 
             <TextView
                 android:id="@+id/tv_welfare"
@@ -247,15 +304,13 @@
                 android:layout_marginTop="6dp"
                 android:textSize="12sp"
                 android:lineSpacingExtra="4dp"
-                android:textColor="?android:attr/textColorSecondary" />
+                android:textColor="@color/apple_muted" />
 
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="18dp"
-                android:textSize="12sp"
-                android:lineSpacingExtra="4dp"
-                android:textColor="?android:attr/textColorSecondary"
+                android:textAppearance="@style/Apple.Footnote"
                 android:text="@string/main_footer" />
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>

@@ -22,6 +22,8 @@ public final class Store {
     private static final String K_STREAM_THINKING = "stream_thinking";
     private static final String K_DROP_TOOL_PROTOCOL = "drop_tool_protocol";
     private static final String K_ONLY_LAST_USER = "only_last_user";
+    private static final String K_COOKIE_HISTORY = "devcloud_cookie_history";
+    private static final int K_HISTORY_MAX = 8;
 
     private static volatile Store sInstance;
 
@@ -52,6 +54,69 @@ public final class Store {
     public void setCookie(String cookie) {
         sp.edit().putString(K_COOKIE, cookie == null ? "" : cookie.trim())
                 .putLong(K_COOKIE_TIME, System.currentTimeMillis()).apply();
+        addCookieHistory(cookie);
+    }
+
+    /** 记录一条 Cookie 历史（去重、最多 {@link #K_HISTORY_MAX} 条，新的在前）。 */
+    public void addCookieHistory(String cookie) {
+        String c = cookie == null ? "" : cookie.trim();
+        if (c.isEmpty()) {
+            return;
+        }
+        try {
+            JSONArray old = new JSONArray(sp.getString(K_COOKIE_HISTORY, "[]"));
+            JSONArray out = new JSONArray();
+            JSONObject head = new JSONObject();
+            head.put("cookie", c);
+            head.put("ts", System.currentTimeMillis());
+            out.put(head);
+            for (int i = 0; i < old.length() && out.length() < K_HISTORY_MAX; i++) {
+                JSONObject o = old.optJSONObject(i);
+                if (o == null) {
+                    continue;
+                }
+                String cur = o.optString("cookie", "");
+                if (cur.isEmpty() || cur.equals(c)) {
+                    continue;
+                }
+                out.put(o);
+            }
+            sp.edit().putString(K_COOKIE_HISTORY, out.toString()).apply();
+        } catch (Throwable ignore) {
+            // 历史记录失败不影响主流程
+        }
+    }
+
+    /** Cookie 历史（新的在前）：用于「粘贴」时挑选早前保存过的会话。 */
+    public List<CookieHist> getCookieHistory() {
+        List<CookieHist> list = new ArrayList<>();
+        try {
+            JSONArray arr = new JSONArray(sp.getString(K_COOKIE_HISTORY, "[]"));
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject o = arr.optJSONObject(i);
+                if (o == null) {
+                    continue;
+                }
+                String c = o.optString("cookie", "");
+                if (!c.isEmpty()) {
+                    list.add(new CookieHist(c, o.optLong("ts", 0)));
+                }
+            }
+        } catch (Throwable ignore) {
+            // 忽略
+        }
+        return list;
+    }
+
+    /** 一条 Cookie 历史。 */
+    public static final class CookieHist {
+        public final String cookie;
+        public final long ts;
+
+        public CookieHist(String cookie, long ts) {
+            this.cookie = cookie;
+            this.ts = ts;
+        }
     }
 
     public long getCookieTime() {
@@ -105,7 +170,13 @@ public final class Store {
 
     public List<String> getApiKeys() {
         List<String> out = new ArrayList<>();
-        String raw = sp.getString(K_APIKEYS, "[]");
+        String raw = sp.getString(K_APIKEYS, null);
+        if (raw == null) {
+            // 首次启动写入默认网关密钥（可在「网关密钥」页修改）
+            sp.edit().putString(K_APIKEYS, "[\"123456\"]").apply();
+            out.add("123456");
+            return out;
+        }
         try {
             JSONArray arr = new JSONArray(raw);
             for (int i = 0; i < arr.length(); i++) {
@@ -468,7 +539,11 @@ public final class Store {
         sp.edit().putBoolean(K_NOTIFY, b).apply();
     }
 
-    /** 是否把 system 消息压缩成一行摘要（v1.9.10）：避免每轮把整段 system prompt 塞进码道。 */
+    /**
+     * 是否过滤 agent 注入内容（v1.9.10，默认开）：丢弃 system / developer 提示、工具说明、
+     * 运行时快照，并剥离 user 消息里夹带的注入块，只把用户原始输入发给码道。
+     * 关闭后完整转发客户端消息（含所有提示词）。
+     */
     public boolean isTrimSystem() {
         return sp.getBoolean(K_TRIM_SYSTEM, true);
     }

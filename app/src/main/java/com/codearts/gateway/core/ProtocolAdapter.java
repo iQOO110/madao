@@ -107,6 +107,23 @@ public final class ProtocolAdapter {
                     String t = o.optString("text", "");
                     if (!t.isEmpty()) {
                         sb.append(t);
+                        continue;
+                    }
+                    // 多模态 / 非文本块：保留占位，避免整条 user 消息被当成空内容丢弃
+                    String type = o.optString("type", "");
+                    if (type.contains("image")) {
+                        sb.append("[图片]");
+                    } else if (type.contains("audio")) {
+                        sb.append("[音频]");
+                    } else if (type.contains("file") || type.contains("document")) {
+                        String name = o.optString("filename", o.optString("name", ""));
+                        sb.append(name.isEmpty() ? "[文件]" : "[文件: " + name + "]");
+                    } else if ("tool_result".equals(type)) {
+                        // Anthropic 风格：内容块可能再嵌套一层 content
+                        String inner = flattenContent(o.opt("content"));
+                        if (!inner.isEmpty()) {
+                            sb.append(inner);
+                        }
                     }
                 } else if (item instanceof String) {
                     sb.append((String) item);
@@ -302,7 +319,7 @@ public final class ProtocolAdapter {
             o.put("id", id);
             o.put("object", "chat.completion.chunk");
             o.put("created", System.currentTimeMillis() / 1000L);
-            o.put("model", model == null || model.isEmpty() ? "intern-inkstone" : model);
+            o.put("model", model == null || model.isEmpty() ? "codearts" : model);
             JSONArray choices = new JSONArray();
             JSONObject c = new JSONObject();
             c.put("index", 0);
@@ -326,7 +343,7 @@ public final class ProtocolAdapter {
             o.put("id", id);
             o.put("object", "chat.completion");
             o.put("created", System.currentTimeMillis() / 1000L);
-            o.put("model", model == null || model.isEmpty() ? "intern-inkstone" : model);
+            o.put("model", model == null || model.isEmpty() ? "codearts" : model);
             JSONArray choices = new JSONArray();
             JSONObject c = new JSONObject();
             c.put("index", 0);

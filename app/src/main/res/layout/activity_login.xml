@@ -1,59 +1,89 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:orientation="vertical">
-
-    <com.google.android.material.appbar.MaterialToolbar
-        android:id="@+id/toolbar"
-        android:layout_width="match_parent"
-        android:layout_height="?attr/actionBarSize"
-        android:background="?attr/colorSurface"
-        app:navigationIcon="@drawable/ic_back"
-        app:title="@string/login_title" />
-
-    <TextView
-        android:id="@+id/tv_state"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:paddingStart="16dp"
-        android:paddingEnd="16dp"
-        android:paddingTop="8dp"
-        android:paddingBottom="4dp"
-        android:textSize="13sp"
-        android:lineSpacingExtra="3dp"
-        android:textColor="?android:attr/textColorSecondary"
-        android:text="" />
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:paddingStart="16dp"
-        android:paddingEnd="16dp"
-        android:paddingTop="6dp">
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btn_save"
-            android:layout_width="0dp"
-            android:layout_weight="1"
-            android:layout_height="wrap_content"
-            android:text="@string/login_save" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btn_copy"
-            style="@style/Widget.Material3.Button.TonalButton"
-            android:layout_width="0dp"
-            android:layout_weight="1"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="10dp"
-            android:text="复制 Cookie" />
-    </LinearLayout>
+    android:layout_height="match_parent">
 
     <WebView
         android:id="@+id/webview"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1" />
-</LinearLayout>
+        android:layout_height="match_parent" />
+
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/action_menu"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="96dp"
+        android:visibility="gone"
+        app:cardBackgroundColor="?attr/colorSurface"
+        app:cardCornerRadius="16dp"
+        app:cardElevation="8dp">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="8dp">
+
+            <com.google.android.material.button.MaterialButton
+            style="@style/Apple.Button"
+                android:id="@+id/btn_save"
+                android:layout_width="150dp"
+                android:layout_height="wrap_content"
+                android:minWidth="0dp"
+                android:text="@string/login_save"
+                android:textSize="12sp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_copy"
+                style="@style/Apple.Button.Tonal"
+                android:layout_width="150dp"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:minWidth="0dp"
+                android:text="@string/login_copy"
+                android:textSize="12sp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_paste"
+                style="@style/Apple.Button.Tonal"
+                android:layout_width="150dp"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:minWidth="0dp"
+                android:text="@string/login_paste"
+                android:textSize="12sp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_reload"
+                style="@style/Apple.Button.Tonal"
+                android:layout_width="150dp"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:minWidth="0dp"
+                android:text="@string/login_reload"
+                android:textSize="12sp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_back"
+                style="@style/Apple.Button.Outlined"
+                android:layout_width="150dp"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:minWidth="0dp"
+                android:text="返回"
+                android:textSize="12sp" />
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/fab_menu"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_margin="16dp"
+        android:contentDescription="登录操作"
+        app:srcCompat="@android:drawable/ic_menu_preferences" />
+</FrameLayout>
