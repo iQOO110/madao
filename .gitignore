@@ -6,3 +6,7 @@ local.properties
 .DS_Store
 *.iml
 .cxx/
+# 构建产物不入库（v1.9.10）
+app/build/
+*.apk
+cdgate_temp/
