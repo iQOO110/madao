@@ -217,9 +217,13 @@ public final class GatewayServer {
         pool.shutdownNow();
     }
 
-    /** 账号切换后清空会话映射，避免把 A 账号的 chat_id 用在 B 账号上。 */
+    /** 账号/Cookie 变更后清空会话映射，避免把旧凭据的 chat_id 与上游会话用到新凭据上。 */
     public void resetSessions() {
         sessions.clear();
+        devCloudSessions.clear();
+        devCloudSessionFailed.clear();
+        pendingUpstreamQuestions.clear();
+        LogRing.log("session", "凭据变更，已清空上游会话缓存");
     }
 
     // ------------------------------------------------------------------ 处理器

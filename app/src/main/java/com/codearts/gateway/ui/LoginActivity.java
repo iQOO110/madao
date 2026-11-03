@@ -196,6 +196,16 @@ public class LoginActivity extends AppCompatActivity {
             return false;
         }
         store.setCookie(all);
+        // 凭据变更：清空网关上游会话缓存，避免首次请求复用旧会话导致 400
+        try {
+            com.codearts.gateway.core.GatewayServer gw =
+                    com.codearts.gateway.service.GatewayService.server();
+            if (gw != null) {
+                gw.resetSessions();
+            }
+        } catch (Throwable ignore) {
+            // 服务未启动时无需清理
+        }
         LogRing.log("login", "DevCloud Cookie 已保存，长度 " + all.length());
         if (syncWeb) {
             // 粘贴保存后写回 WebView，并刷新网页：网页端也能立即用上这份会话
@@ -215,6 +225,9 @@ public class LoginActivity extends AppCompatActivity {
         try {
             CookieManager cm = CookieManager.getInstance();
             cm.setAcceptCookie(true);
+            // 先清掉旧 Cookie，避免新旧混合导致首次请求 400
+            cm.removeAllCookies(null);
+            cm.flush();
             for (String pair : all.split(";")) {
                 String p = pair.trim();
                 int eq = p.indexOf('=');
