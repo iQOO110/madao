@@ -182,6 +182,15 @@ public class LoginActivity extends AppCompatActivity {
                     Toast.LENGTH_LONG).show();
             return false;
         }
+        // CSRF 双提交要求 Cookie 里必须有 cftk，否则上游直接返回 csrf validate fail。
+        // 浏览器 document.cookie 读不到 HttpOnly 的 cftk，所以手动粘贴常缺这一项。
+        if (!hasCftk(all)) {
+            Toast.makeText(this, syncWeb
+                            ? "缺少 cftk：document.cookie 读不到 HttpOnly 的 cftk。请从浏览器 DevTools → Application → Cookies 复制完整值，或直接在网页登录"
+                            : "未取到 cftk，请先在网页完成登录再保存",
+                    Toast.LENGTH_LONG).show();
+            return false;
+        }
         if (!hasSessionKey(all)) {
             Toast.makeText(this, R.string.login_paste_invalid, Toast.LENGTH_LONG).show();
             return false;
@@ -253,6 +262,18 @@ public class LoginActivity extends AppCompatActivity {
             }
             String low = name.toLowerCase();
             if (low.contains("cftk") || low.contains("session") || low.contains("hwwafses")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 是否含 CSRF 双提交所需的 cftk。 */
+    private static boolean hasCftk(String all) {
+        for (String pair : all.split(";")) {
+            String p = pair.trim();
+            int eq = p.indexOf('=');
+            if (eq > 0 && p.substring(0, eq).trim().toLowerCase().contains("cftk")) {
                 return true;
             }
         }
